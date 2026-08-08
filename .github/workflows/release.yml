@@ -1,0 +1,91 @@
+name: Release
+
+# Cut a release by pushing a version tag, e.g.:
+#   git tag v1.0.0 && git push origin v1.0.0
+on:
+  push:
+    tags:
+      - 'v*'
+
+# THE FIX: the publish step needs write access to Contents to create the GitHub
+# Release and upload installers. The original workflow omitted this, so its
+# GITHUB_TOKEN was read-only and the release API call 403'd — installers ended up
+# only in the run's Artifacts, never on the Releases page.
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS runner -> universal .app / .dmg (Intel + Apple Silicon)
+          - platform: macos-latest
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+            args: '--target universal-apple-darwin'
+          # Windows runner -> .msi (+ NSIS .exe, since bundle.targets = "all")
+          - platform: windows-latest
+            rust-targets: ''
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ─────────────────────────────────────────────────────────────────────────
+      # macOS is intentionally left UNSIGNED for now. On first launch users
+      # right-click the app and choose "Open" to bypass Gatekeeper.
+      #
+      # TODO (later): Apple code-signing + notarization for a clean macOS launch.
+      #   1. Add repo secrets: APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD,
+      #      APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD (app-specific),
+      #      APPLE_TEAM_ID.
+      #   2. Pass them as `env:` on the tauri-action step below. tauri-action then
+      #      signs and notarizes the .dmg automatically. No workflow restructure
+      #      needed — just the secrets + env.
+      # ─────────────────────────────────────────────────────────────────────────
+
+      - name: Build and publish release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # A single release per tag; each matrix job attaches its platform's
+          # installers to the same release (tauri-action finds-or-creates it).
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Budget ${{ github.ref_name }}'
+          releaseBody: |
+            Desktop installers for Budget ${{ github.ref_name }}.
+
+            - **macOS**: download the `.dmg`. It is currently **unsigned** — on first
+              launch, right-click the app and choose **Open** to bypass Gatekeeper.
+            - **Windows**: download and run the `.msi` installer.
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
