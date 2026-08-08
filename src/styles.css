@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+@theme {
+  /* ── Colour palette ─────────────────────────────────────── */
+  --color-parchment:      #f8fafc;
+  --color-parchment-dark: #eef2f6;
+  --color-parchment-light:#ffffff;
+  --color-navy:           #0f172a;
+  --color-navy-soft:      #2563eb;
+  --color-gold:           #cbd5e1;
+  --color-gold-deep:      #64748b;
+  --color-burgundy:       #dc2626;
+  --color-ink:            #0f172a;
+  --color-ink-soft:       #64748b;
+
+  /* ── Typography ─────────────────────────────────────────── */
+  --font-display: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-body:    system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  /* ── Spacing base ───────────────────────────────────────── */
+  --spacing: 0.25rem;
+}
+
+/* ── Base reset ────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--color-parchment);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: 18px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--color-parchment-dark); }
+::-webkit-scrollbar-thumb { background: var(--color-gold-deep); border-radius: 4px; }

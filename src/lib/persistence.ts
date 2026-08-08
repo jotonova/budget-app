@@ -1,0 +1,129 @@
+import { invoke } from '@tauri-apps/api/core'
+import type { LedgerData } from './types'
+import { buildSeedData } from './seedData'
+import { maybeRollover } from './rollover'
+import { generateId, getCurrentMonth, monthStart } from './utils'
+
+/** One-time migration: add Savings group + category for ledgers created before Phase 2.5 */
+function maybeAddSavings(data: LedgerData): LedgerData {
+  // Once a ledger has been through (or skipped) first-run onboarding, the user's
+  // category choices are authoritative — never resurrect a Savings category, so a
+  // skipped blank canvas stays blank. Legacy ledgers predating onboarding
+  // (onboarded flag absent/false) still get the one-time backfill.
+  if (data.settings.onboarded) return data
+  if (data.categories.some(c => c.type === 'savings')) return data
+
+  const groupId = generateId()
+  const catId = generateId()
+  const maxGroupOrder = data.groups.reduce((m, g) => Math.max(m, g.order), 0)
+  const month = getCurrentMonth()
+
+  return {
+    ...data,
+    version: Math.max(data.version, 2),
+    groups: [
+      ...data.groups,
+      { id: groupId, name: 'Savings', essential: true, order: maxGroupOrder + 1 },
+    ],
+    categories: [
+      ...data.categories,
+      {
+        id: catId,
+        groupId,
+        name: 'Savings',
+        budgeted: 100,
+        essential: true,
+        fixed: false,
+        alertThreshold: 0.9,
+        order: 1,
+        notes: '',
+        type: 'savings' as const,
+      },
+    ],
+    expenses: [
+      ...data.expenses,
+      {
+        id: generateId(),
+        categoryId: catId,
+        amount: 100,
+        date: monthStart(month),
+        description: 'Monthly savings target — auto',
+        createdAt: new Date().toISOString(),
+      },
+    ],
+  }
+}
+
+/** One-time migration: add paymentMethods array for ledgers created before this feature */
+function maybeAddPaymentMethods(data: LedgerData): LedgerData {
+  if (data.paymentMethods && data.paymentMethods.length > 0) return data
+  return {
+    ...data,
+    paymentMethods: [
+      { id: generateId(), name: 'American Express', order: 0 },
+      { id: generateId(), name: 'Discover',         order: 1 },
+      { id: generateId(), name: 'Mastercard',        order: 2 },
+      { id: generateId(), name: 'Visa',              order: 3 },
+    ],
+  }
+}
+
+/** One-time migration: add the `onboarded` flag for ledgers created before onboarding existed */
+function maybeAddOnboardedFlag(data: LedgerData): LedgerData {
+  if (typeof data.settings.onboarded === 'boolean') return data
+  return {
+    ...data,
+    settings: { ...data.settings, onboarded: false },
+  }
+}
+
+/** One-time migration: add the editable `appTitle` for ledgers created before it existed */
+function maybeAddAppTitle(data: LedgerData): LedgerData {
+  if (typeof data.settings.appTitle === 'string') return data
+  return {
+    ...data,
+    settings: { ...data.settings, appTitle: 'My Budget' },
+  }
+}
+
+let _ledgerPath: string | null = null
+
+async function getLedgerPath(): Promise<string> {
+  if (_ledgerPath) return _ledgerPath
+  const dir = await invoke<string>('get_app_data_dir')
+  _ledgerPath = `${dir}/ledger.json`
+  return _ledgerPath
+}
+
+/**
+ * Loads the ledger from disk. If the file doesn't exist (first launch),
+ * seeds starter budget data and writes it immediately.
+ */
+export async function loadLedger(): Promise<LedgerData> {
+  const path = await getLedgerPath()
+  try {
+    const raw = await invoke<string>('read_ledger', { path })
+    const loaded = JSON.parse(raw) as LedgerData
+    const withSavings = maybeAddSavings(loaded)
+    const withPayments = maybeAddPaymentMethods(withSavings)
+    const withOnboarded = maybeAddOnboardedFlag(withPayments)
+    const migrated = maybeAddAppTitle(withOnboarded)
+    const data = maybeRollover(migrated)
+    if (data !== loaded) await saveLedger(data)
+    return data
+  } catch {
+    // File doesn't exist — first launch; seed and persist
+    const seed = buildSeedData()
+    await saveLedger(seed)
+    return seed
+  }
+}
+
+/**
+ * Atomically persists the ledger to disk via temp-file + rename.
+ */
+export async function saveLedger(data: LedgerData): Promise<void> {
+  const path = await getLedgerPath()
+  const content = JSON.stringify(data, null, 2)
+  await invoke('write_ledger', { path, content })
+}
