@@ -3,7 +3,7 @@ import { loadLedger } from './lib/persistence'
 import { useLedgerStore } from './store/ledgerStore'
 import { useAuthStore } from './store/authStore'
 import { useHouseholdStore } from './store/householdStore'
-import { applyProfile } from './lib/activeProfile'
+import { useProfileStore } from './store/profileStore'
 import Dashboard from './components/Dashboard'
 import AddExpense from './components/AddExpense'
 import CategoryDetail from './components/CategoryDetail'
@@ -64,11 +64,16 @@ export default function App() {
 
   // Switch the visible budget between local and the active cloud household.
   // (Signed in + a household => cloud mode; otherwise local. Local file untouched.)
+  const activeHouseholdName = useHouseholdStore(
+    s => s.households.find(h => h.householdId === s.currentId)?.name ?? null,
+  )
   useEffect(() => {
     if (!ready) return
     const signedIn = authStatus === 'signed-in'
-    applyProfile(signedIn, signedIn ? activeHousehold : null)
-  }, [authStatus, activeHousehold, ready])
+    const hid = signedIn ? activeHousehold : null
+    if (hid) useProfileStore.getState().useHousehold(hid, activeHouseholdName ?? 'Household')
+    else useProfileStore.getState().useLocal()
+  }, [authStatus, activeHousehold, activeHouseholdName, ready])
 
   // ── AddExpense callbacks ───────────────────────────────────────────────────
 

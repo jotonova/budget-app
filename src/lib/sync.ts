@@ -10,16 +10,28 @@ import { loadCloud, saveCloud } from './cloud'
 export type Mode = { kind: 'local' } | { kind: 'cloud'; householdId: string }
 
 let mode: Mode = { kind: 'local' }
+let onCloudError: ((e: unknown) => void) | null = null
 
 export function getMode(): Mode { return mode }
 export function setMode(m: Mode): void { mode = m }
 export function isCloud(): boolean { return mode.kind === 'cloud' }
+
+/** Register a sink for silent cloud write-through failures (profileStore uses it). */
+export function setSyncErrorHandler(fn: ((e: unknown) => void) | null): void { onCloudError = fn }
 
 export async function loadData(): Promise<LedgerData> {
   return mode.kind === 'cloud' ? loadCloud(mode.householdId) : loadLedger()
 }
 
 export async function persistChange(prev: LedgerData | null, next: LedgerData): Promise<void> {
-  if (mode.kind === 'cloud') return saveCloud(mode.householdId, prev, next)
+  if (mode.kind === 'cloud') {
+    try {
+      await saveCloud(mode.householdId, prev, next)
+    } catch (e) {
+      onCloudError?.(e) // surface instead of silently losing a write
+      throw e
+    }
+    return
+  }
   return saveLedger(next)
 }

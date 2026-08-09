@@ -55,20 +55,29 @@ export const useHouseholdStore = create<HouseholdState>((set, get) => ({
     if (!supabase) return
     set({ loading: true, error: null })
     try {
-      const { data: userData } = await supabase.auth.getUser()
-      const uid = userData.user?.id
+      const { data: sess } = await supabase.auth.getSession()
+      const uid = sess.session?.user?.id
       if (!uid) { get().reset(); return }
 
-      const { data, error } = await supabase
+      // Two plain queries (no PostgREST embed, which can silently throw).
+      const { data: memberRows, error } = await supabase
         .from('household_members')
-        .select('household_id, role, households(name)')
+        .select('household_id, role')
         .eq('user_id', uid)
       if (error) throw error
 
-      const households: Membership[] = (data ?? []).map((r: any) => ({
+      const ids = (memberRows ?? []).map((r: any) => r.household_id)
+      const names: Record<string, string> = {}
+      if (ids.length) {
+        const { data: hh, error: e2 } = await supabase.from('households').select('id, name').in('id', ids)
+        if (e2) throw e2
+        for (const h of hh ?? []) names[(h as any).id] = (h as any).name
+      }
+
+      const households: Membership[] = (memberRows ?? []).map((r: any) => ({
         householdId: r.household_id,
         role: r.role,
-        name: r.households?.name ?? 'Household',
+        name: names[r.household_id] ?? 'Household',
       }))
       const prev = get().currentId
       const currentId = prev && households.some(h => h.householdId === prev)

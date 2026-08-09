@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuthStore } from '../store/authStore'
 import { useHouseholdStore } from '../store/householdStore'
+import { useProfileStore } from '../store/profileStore'
 import { reloadActiveProfile } from '../lib/activeProfile'
 import { formatInviteCode } from '../lib/inviteCode'
 
@@ -8,11 +9,19 @@ export default function HouseholdPanel() {
   const userId = useAuthStore(s => s.user?.id)
   const email = useAuthStore(s => s.user?.email)
   const hs = useHouseholdStore()
+  const profileMode = useProfileStore(s => s.mode)
+  const profileHouseholdId = useProfileStore(s => s.householdId)
+  const profileHouseholdName = useProfileStore(s => s.householdName)
+  const switching = useProfileStore(s => s.switching)
+  const importing = useProfileStore(s => s.importing)
+  const syncError = useProfileStore(s => s.syncError)
 
   const [newName, setNewName] = useState('Our Household')
   const [joinCode, setJoinCode] = useState('')
   const [copied, setCopied] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [confirmImport, setConfirmImport] = useState(false)
+  const [importMsg, setImportMsg] = useState('')
 
   useEffect(() => {
     if (userId) hs.load()
@@ -21,6 +30,7 @@ export default function HouseholdPanel() {
 
   const current = hs.households.find(h => h.householdId === hs.currentId) || null
   const isOwner = current?.role === 'owner'
+  const activeCloudHere = profileMode === 'cloud' && !!current && profileHouseholdId === current.householdId
 
   async function copyCode() {
     if (!hs.invite) return
@@ -29,6 +39,15 @@ export default function HouseholdPanel() {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch { /* code is visible to type manually */ }
+  }
+
+  async function doImport() {
+    setImportMsg('')
+    try {
+      const n = await useProfileStore.getState().importLocalIntoHousehold()
+      setImportMsg(n > 0 ? `Imported ${n} item${n === 1 ? '' : 's'} from your local budget.` : 'Your local budget was empty — nothing to import.')
+    } catch { /* syncError surfaces the reason */ }
+    setConfirmImport(false)
   }
 
   const joinRow = (
@@ -52,13 +71,25 @@ export default function HouseholdPanel() {
     </div>
   )
 
-  if (hs.loading && !current) {
-    return <p style={{ ...muted, marginTop: 16 }}>Loading household…</p>
-  }
-
   return (
     <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--color-parchment-dark)' }}>
-      {current ? (
+      {/* Active profile indicator */}
+      <div style={banner(profileMode === 'cloud')}>
+        {profileMode === 'cloud'
+          ? <>● Live sync — <strong>{profileHouseholdName ?? 'household'}</strong></>
+          : <>○ Local budget (offline, on this device)</>}
+        {switching && <span style={{ fontWeight: 400 }}> · switching…</span>}
+      </div>
+      {syncError && (
+        <div style={errBox}>
+          <span style={{ flex: 1 }}>{syncError}</span>
+          <button style={linkBtnSmall} onClick={() => useProfileStore.getState().setSyncError(null)}>dismiss</button>
+        </div>
+      )}
+
+      {hs.loading && !current ? (
+        <p style={{ ...muted, marginTop: 8 }}>Loading household…</p>
+      ) : current ? (
         <>
           <div style={rowWrap}>
             <div style={{ flex: 1, minWidth: 160 }}>
@@ -74,18 +105,37 @@ export default function HouseholdPanel() {
                   {hs.households.map(h => <option key={h.householdId} value={h.householdId}>{h.name}</option>)}
                 </select>
               )}
-              <button
-                style={ghost}
-                disabled={refreshing}
-                onClick={async () => { setRefreshing(true); try { await reloadActiveProfile() } finally { setRefreshing(false) } }}
-                title="Changes sync live automatically — use this to force a full re-pull if needed"
-              >
-                {refreshing ? 'Refreshing…' : 'Refresh from cloud'}
-              </button>
+              {activeCloudHere && (
+                <button
+                  style={ghost}
+                  disabled={refreshing}
+                  onClick={async () => { setRefreshing(true); try { await reloadActiveProfile() } finally { setRefreshing(false) } }}
+                  title="Changes sync live automatically — this forces a full re-pull"
+                >
+                  {refreshing ? 'Refreshing…' : 'Refresh'}
+                </button>
+              )}
             </div>
           </div>
 
-          <p style={{ ...label, marginTop: 14 }}>Members ({hs.members.length})</p>
+          {/* Switch controls */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+            {activeCloudHere ? (
+              <button style={ghost} disabled={switching} onClick={() => useProfileStore.getState().useLocal()}>
+                Switch to Local
+              </button>
+            ) : (
+              <button
+                style={primary}
+                disabled={switching}
+                onClick={() => useProfileStore.getState().useHousehold(current.householdId, current.name)}
+              >
+                {switching ? 'Switching…' : 'Use this household (live sync)'}
+              </button>
+            )}
+          </div>
+
+          <p style={{ ...label, marginTop: 16 }}>Members ({hs.members.length})</p>
           <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 4px' }}>
             {hs.members.map(m => (
               <li key={m.userId} style={{ ...text, display: 'flex', justifyContent: 'space-between', padding: '4px 0', gap: 12 }}>
@@ -116,6 +166,29 @@ export default function HouseholdPanel() {
             </div>
           )}
 
+          {/* One-time import of the local budget into this household */}
+          {activeCloudHere && (
+            <div style={{ marginTop: 16 }}>
+              {!confirmImport ? (
+                <button style={ghost} disabled={importing} onClick={() => { setImportMsg(''); setConfirmImport(true) }}>
+                  Import my local budget into this household
+                </button>
+              ) : (
+                <div style={box}>
+                  <p style={{ ...text, marginTop: 0 }}>
+                    Upload your local budget — income, groups, categories, payment methods, expenses, and settings —
+                    into <strong>{current.name}</strong>? Your local data stays untouched.
+                  </p>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button style={primary} disabled={importing} onClick={doImport}>{importing ? 'Importing…' : 'Confirm import'}</button>
+                    <button style={ghost} disabled={importing} onClick={() => setConfirmImport(false)}>Cancel</button>
+                  </div>
+                </div>
+              )}
+              {importMsg && <p style={{ ...muted, marginTop: 8 }}>{importMsg}</p>}
+            </div>
+          )}
+
           {joinRow}
         </>
       ) : (
@@ -141,6 +214,18 @@ export default function HouseholdPanel() {
   )
 }
 
+const banner = (cloud: boolean): React.CSSProperties => ({
+  fontFamily: 'var(--font-body)', fontSize: 14, fontWeight: 600, padding: '8px 12px',
+  borderRadius: 6, marginBottom: 10,
+  color: cloud ? 'var(--color-navy-soft)' : 'var(--color-ink-soft)',
+  backgroundColor: cloud ? 'rgba(37,99,235,0.08)' : 'var(--color-parchment)',
+  border: `1px solid ${cloud ? 'var(--color-navy-soft)' : 'var(--color-parchment-dark)'}`,
+})
+const errBox: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'var(--font-body)', fontSize: 13,
+  color: 'var(--color-burgundy)', backgroundColor: 'rgba(220,38,38,0.07)',
+  border: '1px solid var(--color-burgundy)', borderRadius: 6, padding: '8px 12px', marginBottom: 10,
+}
 const rowWrap: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }
 const label: React.CSSProperties = {
   fontFamily: 'var(--font-body)', fontSize: 12, fontWeight: 600, letterSpacing: '0.14em',
@@ -169,4 +254,8 @@ const ghost: React.CSSProperties = {
   padding: '10px 18px', fontFamily: 'var(--font-body)', fontSize: 14, fontWeight: 600,
   borderRadius: 6, border: '1px solid var(--color-navy)', backgroundColor: 'transparent',
   color: 'var(--color-navy)', cursor: 'pointer', whiteSpace: 'nowrap',
+}
+const linkBtnSmall: React.CSSProperties = {
+  background: 'none', border: 'none', color: 'var(--color-burgundy)', fontSize: 12,
+  fontFamily: 'var(--font-body)', cursor: 'pointer', textDecoration: 'underline', padding: 0, flexShrink: 0,
 }
