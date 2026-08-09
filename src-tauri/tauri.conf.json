@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Budget",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "identifier": "com.casanova.budget",
   "build": {
     "beforeDevCommand": "pnpm dev",

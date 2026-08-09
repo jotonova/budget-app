@@ -6,13 +6,10 @@ import { useProfileStore } from '../store/profileStore'
 import { markDeviceOnboarded } from '../lib/persistence'
 import { generateId, formatCurrency } from '../lib/utils'
 import { formatInviteCode } from '../lib/inviteCode'
-import type { OnboardingPayload } from '../lib/types'
 
 interface Props {
   onClose: () => void
 }
-
-const TOTAL_STEPS = 6
 
 // ── Income frequency → monthly conversion ──────────────────────────────────────
 // The ledger stores a single monthly income amount per source (same field as
@@ -81,6 +78,10 @@ export default function Onboarding({ onClose }: Props) {
   const isOwner = hs.households.find(h => h.householdId === hs.currentId)?.role === 'owner'
 
   const [step, setStep] = useState(0)
+  // True once the user JOINS an existing household during setup. Joiners skip the
+  // income/categories entry steps and commit nothing — the household already has
+  // its data — so two partners can't create duplicate rows.
+  const [joined, setJoined] = useState(false)
   const [shareName, setShareName] = useState('Our Household')
   const [shareCode, setShareCode] = useState('')
   const [copiedInvite, setCopiedInvite] = useState(false)
@@ -121,12 +122,14 @@ export default function Onboarding({ onClose }: Props) {
     onClose()
   }
   async function handleFinish() {
-    const payload: OnboardingPayload = {
-      budgetName: budgetName.trim() || undefined,
-      income: builtIncome,
-      categories: builtCategories,
+    // A joiner enters nothing — committing would duplicate the household's data.
+    if (!joined) {
+      commitOnboarding({
+        budgetName: budgetName.trim() || undefined,
+        income: builtIncome,
+        categories: builtCategories,
+      })
     }
-    commitOnboarding(payload) // writes to the active backend (cloud household or local)
     await markDone()
     onClose()
   }
@@ -134,8 +137,14 @@ export default function Onboarding({ onClose }: Props) {
     if (!hs.invite) return
     try { await navigator.clipboard.writeText(hs.invite.code); setCopiedInvite(true); setTimeout(() => setCopiedInvite(false), 1500) } catch { /* visible to type */ }
   }
-  const next = () => setStep(s => Math.min(s + 1, TOTAL_STEPS - 1))
-  const back = () => setStep(s => Math.max(s - 1, 0))
+
+  // Joiners follow a shortened flow: Welcome → Share → You're all set.
+  const stepOrder = joined ? [0, 1, 5] : [0, 1, 2, 3, 4, 5]
+  const posInFlow = Math.max(0, stepOrder.indexOf(step))
+  const totalVisible = stepOrder.length
+  const isLast = posInFlow === totalVisible - 1
+  const next = () => setStep(stepOrder[Math.min(posInFlow + 1, totalVisible - 1)])
+  const back = () => setStep(stepOrder[Math.max(posInFlow - 1, 0)])
 
   // ── Focus trap + keyboard nav + scroll lock ───────────────────────────────────
   useEffect(() => {
@@ -195,19 +204,19 @@ export default function Onboarding({ onClose }: Props) {
         {/* Progress */}
         <div style={{ padding: '20px 28px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
+            {Array.from({ length: totalVisible }).map((_, i) => (
               <div
                 key={i}
                 style={{
-                  height: 6, borderRadius: 3, flex: i === step ? '0 0 28px' : '0 0 10px',
-                  backgroundColor: i <= step ? 'var(--color-navy-soft)' : 'var(--color-parchment-dark)',
+                  height: 6, borderRadius: 3, flex: i === posInFlow ? '0 0 28px' : '0 0 10px',
+                  backgroundColor: i <= posInFlow ? 'var(--color-navy-soft)' : 'var(--color-parchment-dark)',
                   transition: 'all 0.2s ease',
                 }}
               />
             ))}
           </div>
           <span style={{ fontSize: 12, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--color-ink-soft)' }}>
-            Step {step + 1} of {TOTAL_STEPS}
+            Step {posInFlow + 1} of {totalVisible}
           </span>
         </div>
 
@@ -268,7 +277,7 @@ export default function Onboarding({ onClose }: Props) {
                   <label style={labelStyle}>Or join with a partner's code</label>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <input style={{ ...inputStyle, flex: '1 1 140px', letterSpacing: '0.1em' }} value={shareCode} onChange={e => setShareCode(e.target.value)} placeholder="e.g. ABCD 2345" />
-                    <button style={ghostBtn} disabled={hs.busy || !shareCode.trim()} onClick={() => { hs.clearError(); hs.joinByCode(shareCode).then(() => setShareCode('')) }}>{hs.busy ? 'Working…' : 'Join'}</button>
+                    <button style={ghostBtn} disabled={hs.busy || !shareCode.trim()} onClick={async () => { hs.clearError(); await hs.joinByCode(shareCode); if (!useHouseholdStore.getState().error) { setJoined(true); setShareCode('') } }}>{hs.busy ? 'Working…' : 'Join'}</button>
                   </div>
                   {hs.error && <p style={{ ...bodyStyle, color: 'var(--color-burgundy)', marginTop: 10 }}>{hs.error}</p>}
                 </div>
@@ -434,30 +443,45 @@ export default function Onboarding({ onClose }: Props) {
           {step === 5 && (
             <div>
               <h2 id={titleId} style={h2Style}>You're all set</h2>
-              <p style={bodyStyle}>
-                {budgetName.trim() ? <><strong>{budgetName.trim()}</strong> is ready. </> : null}
-                We'll add{' '}
-                <strong>{builtIncome.length}</strong> income {builtIncome.length === 1 ? 'source' : 'sources'}
-                {totalMonthlyIncome > 0 ? ` (${formatCurrency(totalMonthlyIncome)}/mo)` : ''} and{' '}
-                <strong>{builtCategories.length}</strong> {builtCategories.length === 1 ? 'category' : 'categories'}
-                {profileMode === 'cloud'
-                  ? <> to your shared household <strong>{profileHouseholdName ?? ''}</strong> — live for your partner.</>
-                  : '.'}
-              </p>
-              <p style={{ ...bodyStyle, color: 'var(--color-ink-soft)' }}>
-                You can change everything anytime in Settings, and add expenses from the Dashboard.
-              </p>
+              {joined ? (
+                <>
+                  <p style={bodyStyle}>
+                    You've joined <strong>{profileHouseholdName ?? 'the household'}</strong>. Your partner's
+                    budget loads when you finish, and anything either of you adds syncs live.
+                  </p>
+                  <p style={{ ...bodyStyle, color: 'var(--color-ink-soft)' }}>
+                    Nothing to enter here — the household already has its income and categories. Add
+                    expenses from the Dashboard.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p style={bodyStyle}>
+                    {budgetName.trim() ? <><strong>{budgetName.trim()}</strong> is ready. </> : null}
+                    We'll add{' '}
+                    <strong>{builtIncome.length}</strong> income {builtIncome.length === 1 ? 'source' : 'sources'}
+                    {totalMonthlyIncome > 0 ? ` (${formatCurrency(totalMonthlyIncome)}/mo)` : ''} and{' '}
+                    <strong>{builtCategories.length}</strong> {builtCategories.length === 1 ? 'category' : 'categories'}
+                    {profileMode === 'cloud'
+                      ? <> to your shared household <strong>{profileHouseholdName ?? ''}</strong> — live for your partner.</>
+                      : '.'}
+                  </p>
+                  <p style={{ ...bodyStyle, color: 'var(--color-ink-soft)' }}>
+                    You can change everything anytime in Settings, and add expenses from the Dashboard.
+                  </p>
+                </>
+              )}
             </div>
           )}
         </div>
 
         {/* Footer */}
         <div style={{ padding: '16px 28px', borderTop: '1px solid var(--color-parchment-dark)', display: 'flex', alignItems: 'center', gap: 12 }}>
-          {step > 0 ? (
+          {posInFlow > 0 ? (
             <button onClick={back} style={ghostBtn}>Back</button>
           ) : <span />}
           <button onClick={handleSkip} style={{ ...linkBtn, marginLeft: 'auto' }}>Skip for now</button>
-          {step < TOTAL_STEPS - 1 ? (
+          {!isLast ? (
             <button onClick={next} style={primaryBtn}>Next</button>
           ) : (
             <button onClick={handleFinish} style={primaryBtn}>Done</button>
