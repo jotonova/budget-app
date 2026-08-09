@@ -19,10 +19,11 @@ export async function checkBudgetAlerts(data: LedgerData, changedCategoryId: str
     .filter(e => e.categoryId === changedCategoryId && e.date.startsWith(month))
     .reduce((sum, e) => sum + e.amount, 0)
 
-  const pct = (spent / cat.budgeted) * 100
-  const threshold = cat.alertThreshold ?? data.settings.alertThresholdDefault ?? 80
+  // Thresholds are stored as fractions 0–1 (e.g. 0.9 = 90%).
+  const fraction = spent / cat.budgeted
+  const threshold = cat.alertThreshold ?? data.settings.alertThresholdDefault ?? 0.9
 
-  if (pct < threshold) return
+  if (fraction < threshold) return
 
   const key = `${changedCategoryId}:${month}`
   if (_notified.has(key)) return
@@ -37,7 +38,7 @@ export async function checkBudgetAlerts(data: LedgerData, changedCategoryId: str
     }
     if (!permitted) return
 
-    const pctStr = Math.round(pct)
+    const pctStr = Math.round(fraction * 100)
     sendNotification({
       title: `${cat.name} — ${pctStr}% of budget used`,
       body: `You have spent $${spent.toFixed(2)} of the $${cat.budgeted.toFixed(2)} monthly budget.`,

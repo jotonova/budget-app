@@ -86,6 +86,23 @@ function maybeAddAppTitle(data: LedgerData): LedgerData {
   }
 }
 
+/** One-time migration: alert thresholds are fractions 0–1. Older data (and a
+ *  previously percentage-based Settings slider) stored 50–100; convert any
+ *  value > 1 to a fraction so local, cloud, and the mapper all agree. */
+function maybeNormalizeThresholds(data: LedgerData): LedgerData {
+  const s = data.settings.alertThresholdDefault
+  const settingsNeeds = typeof s === 'number' && s > 1
+  const catsNeed = data.categories.some(c => c.alertThreshold > 1)
+  if (!settingsNeeds && !catsNeed) return data
+  return {
+    ...data,
+    settings: settingsNeeds ? { ...data.settings, alertThresholdDefault: Math.min(s / 100, 1) } : data.settings,
+    categories: data.categories.map(c =>
+      c.alertThreshold > 1 ? { ...c, alertThreshold: Math.min(c.alertThreshold / 100, 1) } : c,
+    ),
+  }
+}
+
 let _ledgerPath: string | null = null
 
 async function getLedgerPath(): Promise<string> {
@@ -107,7 +124,8 @@ export async function loadLedger(): Promise<LedgerData> {
     const withSavings = maybeAddSavings(loaded)
     const withPayments = maybeAddPaymentMethods(withSavings)
     const withOnboarded = maybeAddOnboardedFlag(withPayments)
-    const migrated = maybeAddAppTitle(withOnboarded)
+    const withAppTitle = maybeAddAppTitle(withOnboarded)
+    const migrated = maybeNormalizeThresholds(withAppTitle)
     const data = maybeRollover(migrated)
     if (data !== loaded) await saveLedger(data)
     return data

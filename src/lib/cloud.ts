@@ -14,10 +14,17 @@ export function rowToGroup(r: any): Group {
 export function rowToPayment(r: any): PaymentMethod {
   return { id: r.id, name: r.name, order: r.sort_order }
 }
+/** Alert thresholds are fractions 0–1. Coerce any stray percentage (>1) and
+ *  clamp so they always fit numeric(4,3) and read/write agree. */
+export function toFraction(v: number): number {
+  const n = v > 1 ? v / 100 : v
+  return Math.max(0, Math.min(1, n))
+}
+
 export function rowToCategory(r: any): Category {
   return {
     id: r.id, groupId: r.group_id, name: r.name, budgeted: Number(r.budgeted),
-    essential: r.essential, fixed: r.fixed, alertThreshold: Number(r.alert_threshold),
+    essential: r.essential, fixed: r.fixed, alertThreshold: toFraction(Number(r.alert_threshold)),
     order: r.sort_order, notes: r.notes ?? '',
     ...(r.kind === 'savings' ? { type: 'savings' as const } : {}),
   }
@@ -31,7 +38,7 @@ export function rowToExpense(r: any): Expense {
 }
 export function rowToSettings(s: any): LedgerSettings {
   return {
-    alertThresholdDefault: Number(s?.alert_threshold_default ?? 0.9),
+    alertThresholdDefault: toFraction(Number(s?.alert_threshold_default ?? 0.9)),
     currency: (s?.currency ?? 'USD') as 'USD',
     monthStartDay: s?.month_start_day ?? 1,
     appTitle: s?.app_title ?? 'My Budget',
@@ -60,7 +67,7 @@ function groupRows(d: LedgerData, hid: string): Row[] {
 function categoryRows(d: LedgerData, hid: string): Row[] {
   return d.categories.map(c => ({
     id: c.id, household_id: hid, group_id: c.groupId, name: c.name, budgeted: c.budgeted,
-    essential: c.essential, fixed: c.fixed, alert_threshold: c.alertThreshold, sort_order: c.order,
+    essential: c.essential, fixed: c.fixed, alert_threshold: toFraction(c.alertThreshold), sort_order: c.order,
     notes: c.notes, kind: c.type ?? 'standard', deleted_at: null,
   }))
 }
@@ -80,7 +87,7 @@ function settingsRow(d: LedgerData, hid: string): Row {
   const s = d.settings
   return {
     household_id: hid,
-    alert_threshold_default: s.alertThresholdDefault,
+    alert_threshold_default: toFraction(s.alertThresholdDefault),
     currency: s.currency,
     month_start_day: s.monthStartDay,
     app_title: s.appTitle,

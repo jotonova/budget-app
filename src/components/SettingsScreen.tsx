@@ -227,7 +227,7 @@ export default function SettingsScreen({ onBack, onRerunSetup }: Props) {
     [data?.paymentMethods],
   )
   const [settings, setSettings] = useState(() => data?.settings ?? {
-    alertThresholdDefault: 80, currency: 'USD' as const, monthStartDay: 1, appTitle: 'My Budget', onboarded: true,
+    alertThresholdDefault: 0.9, currency: 'USD' as const, monthStartDay: 1, appTitle: 'My Budget', onboarded: true,
   })
 
   const sensors = useSensors(
@@ -614,13 +614,13 @@ export default function SettingsScreen({ onBack, onRerunSetup }: Props) {
 
               {/* Alert threshold */}
               <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--color-parchment-dark)' }}>
-                <label style={lbl}>Default Alert Threshold ({settings.alertThresholdDefault}% of budget)</label>
+                <label style={lbl}>Default Alert Threshold ({Math.round(settings.alertThresholdDefault * 100)}% of budget)</label>
                 <input
                   type="range"
                   min={50}
                   max={100}
-                  value={settings.alertThresholdDefault}
-                  onChange={e => handleSettingChange('alertThresholdDefault', Number(e.target.value))}
+                  value={Math.round(settings.alertThresholdDefault * 100)}
+                  onChange={e => handleSettingChange('alertThresholdDefault', Number(e.target.value) / 100)}
                   style={{ width: '100%', accentColor: 'var(--color-navy)' }}
                 />
                 <p style={{ fontFamily: 'var(--font-body)', fontSize: 15, color: 'var(--color-ink-soft)', marginTop: 6 }}>
