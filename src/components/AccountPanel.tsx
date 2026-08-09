@@ -42,8 +42,8 @@ export default function AccountPanel() {
           <div style={{ flex: 1, minWidth: 180 }}>
             <p style={label}>Cloud sync</p>
             <p style={{ ...text, color: 'var(--color-ink-soft)', margin: 0 }}>
-              Sign in to share this budget with a partner. Live two-way sync is coming next — for
-              now this only signs you in; your local budget is unchanged.
+              Sign in to create or join a shared household and keep your budget in sync with a
+              partner, live. Your local budget stays on this device until you choose to use a household.
             </p>
           </div>
           <button
