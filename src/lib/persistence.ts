@@ -138,6 +138,17 @@ export async function loadLedger(): Promise<LedgerData> {
 }
 
 /**
+ * Stamp the LOCAL device's onboarded flag directly (bypassing the mode router).
+ * Needed when onboarding finishes in cloud mode: cloud settings don't store
+ * `onboarded`, so we mark it on the local file so onboarding won't reappear.
+ */
+export async function markDeviceOnboarded(): Promise<void> {
+  const local = await loadLedger()
+  if (local.settings.onboarded) return
+  await saveLedger({ ...local, settings: { ...local.settings, onboarded: true } })
+}
+
+/**
  * Atomically persists the ledger to disk via temp-file + rename.
  */
 export async function saveLedger(data: LedgerData): Promise<void> {

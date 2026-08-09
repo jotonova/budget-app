@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLedgerStore } from '../store/ledgerStore'
+import { useAuthStore } from '../store/authStore'
+import { useHouseholdStore } from '../store/householdStore'
+import { useProfileStore } from '../store/profileStore'
+import { markDeviceOnboarded } from '../lib/persistence'
 import { generateId, formatCurrency } from '../lib/utils'
+import { formatInviteCode } from '../lib/inviteCode'
 import type { OnboardingPayload } from '../lib/types'
 
 interface Props {
   onClose: () => void
 }
 
-const TOTAL_STEPS = 5
+const TOTAL_STEPS = 6
 
 // ── Income frequency → monthly conversion ──────────────────────────────────────
 // The ledger stores a single monthly income amount per source (same field as
@@ -64,7 +69,21 @@ export default function Onboarding({ onClose }: Props) {
   const commitOnboarding = useLedgerStore(s => s.commitOnboarding)
   const updateSettings = useLedgerStore(s => s.updateSettings)
 
+  // Sharing step
+  const authConfigured = useAuthStore(s => s.configured)
+  const authStatus = useAuthStore(s => s.status)
+  const authError = useAuthStore(s => s.error)
+  const email = useAuthStore(s => s.user?.email)
+  const signInWithGoogle = useAuthStore(s => s.signInWithGoogle)
+  const profileMode = useProfileStore(s => s.mode)
+  const profileHouseholdName = useProfileStore(s => s.householdName)
+  const hs = useHouseholdStore()
+  const isOwner = hs.households.find(h => h.householdId === hs.currentId)?.role === 'owner'
+
   const [step, setStep] = useState(0)
+  const [shareName, setShareName] = useState('Our Household')
+  const [shareCode, setShareCode] = useState('')
+  const [copiedInvite, setCopiedInvite] = useState(false)
   const [budgetName, setBudgetName] = useState('')
   const [income, setIncome] = useState<IncomeRow[]>([{ id: generateId(), name: '', amount: '', freq: 'monthly' }])
   const [cats, setCats] = useState<CatRow[]>(() =>
@@ -91,18 +110,29 @@ export default function Onboarding({ onClose }: Props) {
   const totalMonthlyIncome = builtIncome.reduce((s, r) => s + r.monthly, 0)
 
   // ── Actions ──────────────────────────────────────────────────────────────────
-  function handleSkip() {
-    updateSettings({ onboarded: true })
+  async function markDone() {
+    // `onboarded` is a per-device flag. In cloud mode commitOnboarding writes to
+    // the household (which doesn't store it), so stamp the local file directly.
+    if (useProfileStore.getState().mode === 'cloud') await markDeviceOnboarded()
+    else updateSettings({ onboarded: true })
+  }
+  async function handleSkip() {
+    await markDone()
     onClose()
   }
-  function handleFinish() {
+  async function handleFinish() {
     const payload: OnboardingPayload = {
       budgetName: budgetName.trim() || undefined,
       income: builtIncome,
       categories: builtCategories,
     }
-    commitOnboarding(payload)
+    commitOnboarding(payload) // writes to the active backend (cloud household or local)
+    await markDone()
     onClose()
+  }
+  async function copyInvite() {
+    if (!hs.invite) return
+    try { await navigator.clipboard.writeText(hs.invite.code); setCopiedInvite(true); setTimeout(() => setCopiedInvite(false), 1500) } catch { /* visible to type */ }
   }
   const next = () => setStep(s => Math.min(s + 1, TOTAL_STEPS - 1))
   const back = () => setStep(s => Math.max(s - 1, 0))
@@ -187,14 +217,76 @@ export default function Onboarding({ onClose }: Props) {
             <div>
               <h2 id={titleId} style={h2Style}>Welcome to your budget</h2>
               <p style={bodyStyle}>
-                Let's set up your private, local budget. Everything you add stays on this device —
-                nothing is uploaded anywhere. This quick setup is optional; you can skip it and add
-                things later from Settings.
+                Let's set up your budget. It lives on this device by default. On the next step you can
+                choose to share it with a partner and sync live — set that up first so everything you
+                add flows straight to both of you. This quick setup is optional; you can skip anytime.
               </p>
             </div>
           )}
 
           {step === 1 && (
+            <div>
+              <h2 id={titleId} style={h2Style}>Share with a partner?</h2>
+              <p style={bodyStyle}>
+                Keep this budget in sync with a partner — live on both your devices. Setting it up now
+                means everything you add next goes straight to your shared household. Prefer to keep it
+                on this device? Skip this; you can share later from Settings.
+              </p>
+
+              {!authConfigured ? (
+                <p style={{ ...bodyStyle, color: 'var(--color-ink-soft)' }}>
+                  Cloud sharing isn't available in this build — continuing on this device only.
+                </p>
+              ) : profileMode === 'cloud' ? (
+                <div style={{ border: '1px solid var(--color-navy-soft)', backgroundColor: 'rgba(37,99,235,0.08)', borderRadius: 8, padding: '14px 16px' }}>
+                  <p style={{ ...bodyStyle, margin: 0, color: 'var(--color-navy-soft)', fontWeight: 600 }}>
+                    ● Sharing live with {profileHouseholdName ?? 'your household'} ({hs.members.length} member{hs.members.length === 1 ? '' : 's'})
+                  </p>
+                  <p style={{ ...bodyStyle, marginTop: 6, marginBottom: isOwner ? 12 : 0, color: 'var(--color-ink-soft)' }}>
+                    Anything you add next appears on your partner's device.
+                  </p>
+                  {isOwner && (hs.invite ? (
+                    <div>
+                      <label style={labelStyle}>Invite code — send it to your partner</label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <code style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 20, fontWeight: 700, letterSpacing: '0.18em', color: 'var(--color-navy)' }}>{formatInviteCode(hs.invite.code)}</code>
+                        <button style={ghostBtn} onClick={copyInvite}>{copiedInvite ? 'Copied!' : 'Copy'}</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button style={ghostBtn} disabled={hs.busy} onClick={() => hs.generateInvite()}>{hs.busy ? 'Working…' : 'Generate invite code'}</button>
+                  ))}
+                </div>
+              ) : authStatus === 'signed-in' ? (
+                <div>
+                  <p style={{ ...bodyStyle, color: 'var(--color-ink-soft)' }}>Signed in as {email}.</p>
+                  <label style={labelStyle}>Create a household</label>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+                    <input style={{ ...inputStyle, flex: '1 1 160px' }} value={shareName} onChange={e => setShareName(e.target.value)} placeholder="Household name" />
+                    <button style={primaryBtn} disabled={hs.busy} onClick={() => hs.createHousehold(shareName)}>{hs.busy ? 'Working…' : 'Create'}</button>
+                  </div>
+                  <label style={labelStyle}>Or join with a partner's code</label>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <input style={{ ...inputStyle, flex: '1 1 140px', letterSpacing: '0.1em' }} value={shareCode} onChange={e => setShareCode(e.target.value)} placeholder="e.g. ABCD 2345" />
+                    <button style={ghostBtn} disabled={hs.busy || !shareCode.trim()} onClick={() => { hs.clearError(); hs.joinByCode(shareCode).then(() => setShareCode('')) }}>{hs.busy ? 'Working…' : 'Join'}</button>
+                  </div>
+                  {hs.error && <p style={{ ...bodyStyle, color: 'var(--color-burgundy)', marginTop: 10 }}>{hs.error}</p>}
+                </div>
+              ) : (
+                <div>
+                  <button style={primaryBtn} disabled={authStatus === 'signing-in'} onClick={() => signInWithGoogle()}>
+                    {authStatus === 'signing-in' ? 'Signing in…' : 'Sign in with Google'}
+                  </button>
+                  <p style={{ ...bodyStyle, color: 'var(--color-ink-soft)', marginTop: 12 }}>
+                    Sign in to create or join a shared household. You can also skip and stay on this device.
+                  </p>
+                  {authError && <p style={{ ...bodyStyle, color: 'var(--color-burgundy)', marginTop: 6 }}>{authError}</p>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === 2 && (
             <div>
               <h2 id={titleId} style={h2Style}>Name your budget</h2>
               <p style={bodyStyle}>Give it a name if you like — this shows in the header. You can leave it blank.</p>
@@ -210,7 +302,7 @@ export default function Onboarding({ onClose }: Props) {
             </div>
           )}
 
-          {step === 2 && (
+          {step === 3 && (
             <div>
               <h2 id={titleId} style={h2Style}>Add your income</h2>
               <p style={bodyStyle}>Add one or more income sources. Optional — you can add these later.</p>
@@ -270,7 +362,7 @@ export default function Onboarding({ onClose }: Props) {
             </div>
           )}
 
-          {step === 3 && (
+          {step === 4 && (
             <div>
               <h2 id={titleId} style={h2Style}>Starter categories</h2>
               <p style={bodyStyle}>Pick the categories to start with. Only the checked ones are created. You can set a monthly budget now or later.</p>
@@ -339,7 +431,7 @@ export default function Onboarding({ onClose }: Props) {
             </div>
           )}
 
-          {step === 4 && (
+          {step === 5 && (
             <div>
               <h2 id={titleId} style={h2Style}>You're all set</h2>
               <p style={bodyStyle}>
@@ -347,7 +439,10 @@ export default function Onboarding({ onClose }: Props) {
                 We'll add{' '}
                 <strong>{builtIncome.length}</strong> income {builtIncome.length === 1 ? 'source' : 'sources'}
                 {totalMonthlyIncome > 0 ? ` (${formatCurrency(totalMonthlyIncome)}/mo)` : ''} and{' '}
-                <strong>{builtCategories.length}</strong> {builtCategories.length === 1 ? 'category' : 'categories'}.
+                <strong>{builtCategories.length}</strong> {builtCategories.length === 1 ? 'category' : 'categories'}
+                {profileMode === 'cloud'
+                  ? <> to your shared household <strong>{profileHouseholdName ?? ''}</strong> — live for your partner.</>
+                  : '.'}
               </p>
               <p style={{ ...bodyStyle, color: 'var(--color-ink-soft)' }}>
                 You can change everything anytime in Settings, and add expenses from the Dashboard.
