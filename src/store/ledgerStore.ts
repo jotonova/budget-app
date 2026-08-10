@@ -155,24 +155,30 @@ export const useLedgerStore = create<LedgerStore>((set, get) => ({
     set((s) => {
       if (!s.data) return s
       const d = s.data
-      const newIncome = payload.income.map((inc) => ({
-        id: generateId(),
-        name: inc.name,
-        monthly: inc.monthly,
-      }))
+      // Name-idempotent: never add income/categories whose name already exists in
+      // the active budget (prevents duplicates when onboarding runs into a
+      // household that already has data, e.g. alongside an import).
+      const norm = (x: string) => x.trim().toLowerCase()
+      const existingIncome = new Set(d.income.sources.map((x) => norm(x.name)))
+      const existingCats = new Set(d.categories.map((x) => norm(x.name)))
+      const newIncome = payload.income
+        .filter((inc) => inc.name.trim() !== '' && !existingIncome.has(norm(inc.name)))
+        .map((inc) => ({ id: generateId(), name: inc.name, monthly: inc.monthly }))
       const baseOrder = d.categories.length
-      const newCategories: Category[] = payload.categories.map((c, i) => ({
-        id: generateId(),
-        groupId: null,
-        name: c.name,
-        budgeted: c.budgeted,
-        essential: c.essential,
-        fixed: false,
-        alertThreshold: d.settings.alertThresholdDefault,
-        order: baseOrder + i,
-        notes: '',
-        ...(c.type === 'savings' ? { type: 'savings' as const } : {}),
-      }))
+      const newCategories: Category[] = payload.categories
+        .filter((c) => c.name.trim() !== '' && !existingCats.has(norm(c.name)))
+        .map((c, i) => ({
+          id: generateId(),
+          groupId: null,
+          name: c.name,
+          budgeted: c.budgeted,
+          essential: c.essential,
+          fixed: false,
+          alertThreshold: d.settings.alertThresholdDefault,
+          order: baseOrder + i,
+          notes: '',
+          ...(c.type === 'savings' ? { type: 'savings' as const } : {}),
+        }))
       const trimmedName = payload.budgetName?.trim()
       const next: LedgerData = {
         ...d,

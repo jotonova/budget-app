@@ -45,7 +45,9 @@ export default function HouseholdPanel() {
     setImportMsg('')
     try {
       const n = await useProfileStore.getState().importLocalIntoHousehold()
-      setImportMsg(n > 0 ? `Imported ${n} item${n === 1 ? '' : 's'} from your local budget.` : 'Your local budget was empty — nothing to import.')
+      setImportMsg(n > 0
+        ? `Imported ${n} new item${n === 1 ? '' : 's'} into the household.`
+        : 'Nothing new to import — everything from your local budget is already in this household.')
     } catch { /* syncError surfaces the reason */ }
     setConfirmImport(false)
   }
