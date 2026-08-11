@@ -1,6 +1,7 @@
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
 import type { LedgerData } from './types'
 import { getCurrentMonth } from './utils'
+import { isDesktop } from './platform'
 
 /** Tracks which category+month crossings have already been notified. */
 const _notified = new Set<string>()
@@ -29,6 +30,8 @@ export async function checkBudgetAlerts(data: LedgerData, changedCategoryId: str
   if (_notified.has(key)) return
 
   _notified.add(key)
+
+  if (!isDesktop) return // web build: no native notifications (Stage 5 could add web push)
 
   try {
     let permitted = await isPermissionGranted()

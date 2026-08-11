@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import SceneHeader from './scenes/SceneHeader'
 import { useLedgerStore } from '../store/ledgerStore'
+import { useIsMobile } from '../lib/useIsMobile'
 import { formatCurrency, today, yesterday, tomorrow } from '../lib/utils'
 import type { Category } from '../lib/types'
 
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export default function AddExpense({ onSaved, onCancel, initialCategoryId }: Props) {
+  const isMobile = useIsMobile()
   const data = useLedgerStore(s => s.data)
   const addExpense = useLedgerStore(s => s.addExpense)
 
@@ -97,7 +99,7 @@ export default function AddExpense({ onSaved, onCancel, initialCategoryId }: Pro
       />
 
 
-      <div style={{ maxWidth: 600, margin: '0 auto', padding: '40px 24px 80px' }}>
+      <div style={{ maxWidth: 600, margin: '0 auto', padding: isMobile ? '24px 16px 96px' : '40px 24px 80px' }}>
 
         {/* Amount */}
         <div className="mb-8">

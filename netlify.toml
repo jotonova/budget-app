@@ -1,0 +1,13 @@
+# Netlify build config for the Budget web app (Vite SPA).
+# Supabase URL + publishable key come from the committed .env.production, which
+# `vite build` loads automatically — so NO environment variables are required in
+# Netlify. (They're public/RLS-guarded, the same values the desktop app ships.)
+
+[build]
+  command = "pnpm build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# SPA routing + OAuth return live in public/_redirects (copied to dist/).

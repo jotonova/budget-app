@@ -18,8 +18,11 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { save, open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
+import { isDesktop } from '../lib/platform'
+import { downloadFile, pickTextFile } from '../lib/webFiles'
 import SceneHeader from './scenes/SceneHeader'
 import AccountPanel from './AccountPanel'
+import { useIsMobile } from '../lib/useIsMobile'
 import { useLedgerStore } from '../store/ledgerStore'
 import { persistChange } from '../lib/sync'
 import { formatCurrency, generateId } from '../lib/utils'
@@ -230,8 +233,11 @@ export default function SettingsScreen({ onBack, onRerunSetup }: Props) {
     alertThresholdDefault: 0.9, currency: 'USD' as const, monthStartDay: 1, appTitle: 'My Budget', onboarded: true,
   })
 
+  const isMobile = useIsMobile()
+  // On touch, require a short press-and-hold to start a drag so normal scrolling
+  // still works. Desktop keeps the immediate-drag behavior (no constraint).
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, isMobile ? { activationConstraint: { delay: 200, tolerance: 8 } } : undefined),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
@@ -353,12 +359,16 @@ export default function SettingsScreen({ onBack, onRerunSetup }: Props) {
   async function handleBackupNow() {
     setBackupError('')
     try {
-      const path = await save({
-        defaultPath: `casanova-budget-backup-${new Date().toISOString().slice(0,10)}.json`,
-        filters: [{ name: 'JSON', extensions: ['json'] }],
-      })
-      if (!path || !data) return
-      await invoke('write_ledger', { path, content: JSON.stringify(data, null, 2) })
+      if (!data) return
+      const content = JSON.stringify(data, null, 2)
+      const name = `budget-backup-${new Date().toISOString().slice(0, 10)}.json`
+      if (isDesktop) {
+        const path = await save({ defaultPath: name, filters: [{ name: 'JSON', extensions: ['json'] }] })
+        if (!path) return
+        await invoke('write_ledger', { path, content })
+      } else {
+        downloadFile(name, content, 'application/json')
+      }
       flash('Backup saved.')
     } catch (err) {
       setBackupError(String(err))
@@ -368,12 +378,15 @@ export default function SettingsScreen({ onBack, onRerunSetup }: Props) {
   async function handleRestoreBackup() {
     setBackupError('')
     try {
-      const path = await open({
-        filters: [{ name: 'JSON', extensions: ['json'] }],
-        multiple: false,
-      }) as string | null
-      if (!path) return
-      const content = await invoke<string>('read_ledger', { path })
+      let content: string | null
+      if (isDesktop) {
+        const path = await open({ filters: [{ name: 'JSON', extensions: ['json'] }], multiple: false }) as string | null
+        if (!path) return
+        content = await invoke<string>('read_ledger', { path })
+      } else {
+        content = await pickTextFile()
+        if (!content) return
+      }
       const restored = JSON.parse(content)
       init(restored)
       setIncomeSources(restored.income.sources)
@@ -404,7 +417,7 @@ export default function SettingsScreen({ onBack, onRerunSetup }: Props) {
         subtitle="Manage your budget configuration"
       />
 
-      <div style={{ maxWidth: 800, margin: '0 auto', padding: '32px 24px 80px' }}>
+      <div style={{ maxWidth: 800, margin: '0 auto', padding: isMobile ? '20px 16px 96px' : '32px 24px 80px' }}>
 
         {/* Back */}
         <button

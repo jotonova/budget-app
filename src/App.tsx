@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react'
 import { loadLedger } from './lib/persistence'
+import { isWeb, isDesktop } from './lib/platform'
+import { useIsMobile } from './lib/useIsMobile'
+import WebSignIn from './components/WebSignIn'
+import MobileNav from './components/MobileNav'
 import { useLedgerStore } from './store/ledgerStore'
 import { useAuthStore } from './store/authStore'
 import { useHouseholdStore } from './store/householdStore'
@@ -41,8 +45,10 @@ export default function App() {
   const [detailCategoryId, setDetailCategoryId] = useState<string | null>(null)
   const [addExpenseCategoryId, setAddExpenseCategoryId] = useState<string | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
+  const isMobile = useIsMobile()
 
   useEffect(() => {
+    if (isWeb) { setReady(true); return } // web has no local file; sign-in gates the app
     loadLedger()
       .then(d => {
         init(d)
@@ -72,7 +78,7 @@ export default function App() {
     const signedIn = authStatus === 'signed-in'
     const hid = signedIn ? activeHousehold : null
     if (hid) useProfileStore.getState().useHousehold(hid, activeHouseholdName ?? 'Household')
-    else useProfileStore.getState().useLocal()
+    else if (isDesktop) useProfileStore.getState().useLocal() // web has no local mode
   }, [authStatus, activeHousehold, activeHouseholdName, ready])
 
   // ── AddExpense callbacks ───────────────────────────────────────────────────
@@ -143,6 +149,11 @@ export default function App() {
         Opening your budget…
       </div>
     )
+  }
+
+  // Web is cloud-only: gate the whole app behind Google sign-in.
+  if (isWeb && authStatus !== 'signed-in') {
+    return <WebSignIn />
   }
 
   // ── Main render ────────────────────────────────────────────────────────────
@@ -228,6 +239,24 @@ export default function App() {
       {/* First-run onboarding overlay */}
       {showOnboarding && (
         <Onboarding onClose={() => setShowOnboarding(false)} />
+      )}
+
+      {/* Mobile bottom navigation (hidden on desktop widths) */}
+      {isMobile && !showOnboarding && (
+        <MobileNav
+          active={
+            page === 'dashboard' ? 'dashboard'
+              : page === 'ledger' ? 'ledger'
+              : page === 'add-expense' ? 'add-expense'
+              : page === 'settings' ? 'settings'
+              : 'other'
+          }
+          onNavigate={(target) => {
+            setEditingExpense(null)
+            if (target === 'add-expense') { setAddExpenseCategoryId(null); setPage('add-expense') }
+            else setPage(target)
+          }}
+        />
       )}
     </>
   )

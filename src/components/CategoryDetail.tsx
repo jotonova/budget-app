@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import SceneHeader from './scenes/SceneHeader'
 import { useLedgerStore } from '../store/ledgerStore'
+import { useIsMobile } from '../lib/useIsMobile'
 import { formatCurrency, formatDateShort, getCurrentMonth } from '../lib/utils'
 import type { Expense } from '../lib/types'
 
@@ -33,6 +34,7 @@ function ProgressBar({ spent, budgeted, fixed }: { spent: number; budgeted: numb
 }
 
 export default function CategoryDetail({ categoryId, onBack, onExpenseClick, onAddExpense }: Props) {
+  const isMobile = useIsMobile()
   const data = useLedgerStore(s => s.data)
   const expensesForMonth = useLedgerStore(s => s.expensesForMonth)
   const spentForCategory = useLedgerStore(s => s.spentForCategory)
@@ -59,7 +61,7 @@ export default function CategoryDetail({ categoryId, onBack, onExpenseClick, onA
         subtitle={group ? `${group.name}  ·  ${category.essential ? 'Essential' : 'Non-Essential'}` : (category.essential ? 'Essential' : 'Non-Essential')}
       />
 
-      <div style={{ maxWidth: 700, margin: '0 auto', padding: '32px 24px 80px' }}>
+      <div style={{ maxWidth: 700, margin: '0 auto', padding: isMobile ? '20px 16px 96px' : '32px 24px 80px' }}>
 
         {/* Back */}
         <button

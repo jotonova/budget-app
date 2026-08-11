@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { PieChart, Pie, Cell, Tooltip } from 'recharts'
 import { useLedgerStore } from '../store/ledgerStore'
 import { formatCurrency, getCurrentMonth } from '../lib/utils'
+import { useIsMobile } from '../lib/useIsMobile'
 
 // ── Stacked pace bars ─────────────────────────────────────────────────────────
 
@@ -66,6 +67,7 @@ const SLICE_COLORS = {
 }
 
 export default function DashboardCharts() {
+  const isMobile = useIsMobile()
   const data = useLedgerStore(s => s.data)
   const expensesForMonth = useLedgerStore(s => s.expensesForMonth)
   const totalIncome = useLedgerStore(s => s.totalIncome)
@@ -106,7 +108,7 @@ export default function DashboardCharts() {
   const budgetUsed = totalBudgeted > 0 ? Math.min(totalSpent / totalBudgeted, 1) : 0
 
   return (
-    <div className="grid gap-6 mb-8" style={{ gridTemplateColumns: '1fr 1fr' }}>
+    <div className="grid gap-6 mb-8" style={{ gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr' }}>
 
       {/* ── Pie chart in pocket watch frame ─── */}
       <div className="rounded-lg" style={{ border: '1px solid var(--color-gold)', backgroundColor: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 20 }}>
@@ -127,7 +129,7 @@ export default function DashboardCharts() {
           <>
             {/* Donut */}
             {(() => {
-              const donutPx = 220
+              const donutPx = isMobile ? 176 : 220
               return (
                 <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', padding: '8px 0' }}>
                   <PieChart width={donutPx} height={donutPx} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -135,8 +137,8 @@ export default function DashboardCharts() {
                       data={pieData}
                       cx={donutPx / 2}
                       cy={donutPx / 2}
-                      innerRadius={62}
-                      outerRadius={104}
+                      innerRadius={isMobile ? 50 : 62}
+                      outerRadius={isMobile ? 83 : 104}
                       startAngle={90}
                       endAngle={-270}
                       dataKey="value"
