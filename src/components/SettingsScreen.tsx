@@ -18,6 +18,8 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { save, open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
+import { isDesktop } from '../lib/platform'
+import { downloadFile, pickTextFile } from '../lib/webFiles'
 import SceneHeader from './scenes/SceneHeader'
 import AccountPanel from './AccountPanel'
 import { useLedgerStore } from '../store/ledgerStore'
@@ -353,12 +355,16 @@ export default function SettingsScreen({ onBack, onRerunSetup }: Props) {
   async function handleBackupNow() {
     setBackupError('')
     try {
-      const path = await save({
-        defaultPath: `casanova-budget-backup-${new Date().toISOString().slice(0,10)}.json`,
-        filters: [{ name: 'JSON', extensions: ['json'] }],
-      })
-      if (!path || !data) return
-      await invoke('write_ledger', { path, content: JSON.stringify(data, null, 2) })
+      if (!data) return
+      const content = JSON.stringify(data, null, 2)
+      const name = `budget-backup-${new Date().toISOString().slice(0, 10)}.json`
+      if (isDesktop) {
+        const path = await save({ defaultPath: name, filters: [{ name: 'JSON', extensions: ['json'] }] })
+        if (!path) return
+        await invoke('write_ledger', { path, content })
+      } else {
+        downloadFile(name, content, 'application/json')
+      }
       flash('Backup saved.')
     } catch (err) {
       setBackupError(String(err))
@@ -368,12 +374,15 @@ export default function SettingsScreen({ onBack, onRerunSetup }: Props) {
   async function handleRestoreBackup() {
     setBackupError('')
     try {
-      const path = await open({
-        filters: [{ name: 'JSON', extensions: ['json'] }],
-        multiple: false,
-      }) as string | null
-      if (!path) return
-      const content = await invoke<string>('read_ledger', { path })
+      let content: string | null
+      if (isDesktop) {
+        const path = await open({ filters: [{ name: 'JSON', extensions: ['json'] }], multiple: false }) as string | null
+        if (!path) return
+        content = await invoke<string>('read_ledger', { path })
+      } else {
+        content = await pickTextFile()
+        if (!content) return
+      }
       const restored = JSON.parse(content)
       init(restored)
       setIncomeSources(restored.income.sources)

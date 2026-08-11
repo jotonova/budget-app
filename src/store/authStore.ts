@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { isWeb } from '../lib/platform'
 import { useHouseholdStore } from './householdStore'
 
 type AuthStatus = 'loading' | 'signed-out' | 'signing-in' | 'signed-in'
@@ -51,6 +52,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   async signInWithGoogle() {
     if (!supabase) { set({ error: 'Cloud sync is not configured on this build.' }); return }
+
+    // ── Web: standard Supabase OAuth full-page redirect ──────────────────────
+    if (isWeb) {
+      set({ status: 'signing-in', error: null })
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin },
+      })
+      if (error) set({ status: 'signed-out', error: error.message })
+      // On success the tab navigates to Google; on return, detectSessionInUrl +
+      // onAuthStateChange finish the sign-in. Nothing more to do here.
+      return
+    }
+
+    // ── Desktop: loopback server + PKCE (unchanged) ──────────────────────────
     set({ status: 'signing-in', error: null })
     let unlisten: (() => void) | undefined
     try {

@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react'
 import { save } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
+import { isDesktop } from '../lib/platform'
+import { downloadFile } from '../lib/webFiles'
 import SceneHeader from './scenes/SceneHeader'
 import { useLedgerStore } from '../store/ledgerStore'
 import { formatCurrency, formatDateShort, getCurrentMonth } from '../lib/utils'
@@ -100,16 +102,20 @@ export default function LedgerView({ onBack, onExpenseClick }: Props) {
   async function handleExportPDF() {
     setExportError('')
     try {
-      const path = await save({
-        defaultPath: `Budget-${selectedMonth}.pdf`,
-        filters: [{ name: 'PDF', extensions: ['pdf'] }],
-      })
-      if (!path || !data) return
-      console.log(`[LedgerView] Exporting PDF: ${filtered.length} expense(s) for ${selectedMonth}`)
+      if (!data) return
       const pdf = buildLedgerPdf({ expenses: filtered, data, month: selectedMonth, catLabel })
-      const bytes = pdf.output('arraybuffer')
-      const b64 = btoa(String.fromCharCode(...new Uint8Array(bytes)))
-      await invoke('write_bytes', { path, base64Content: b64 })
+      if (isDesktop) {
+        const path = await save({
+          defaultPath: `Budget-${selectedMonth}.pdf`,
+          filters: [{ name: 'PDF', extensions: ['pdf'] }],
+        })
+        if (!path) return
+        const bytes = pdf.output('arraybuffer')
+        const b64 = btoa(String.fromCharCode(...new Uint8Array(bytes)))
+        await invoke('write_bytes', { path, base64Content: b64 })
+      } else {
+        pdf.save(`Budget-${selectedMonth}.pdf`) // browser download
+      }
     } catch (err) {
       setExportError(String(err))
     }
@@ -118,16 +124,21 @@ export default function LedgerView({ onBack, onExpenseClick }: Props) {
   async function handleExportCSV() {
     setExportError('')
     try {
-      const path = await save({
-        defaultPath: `ledger-${selectedMonth}.csv`,
-        filters: [{ name: 'CSV', extensions: ['csv'] }],
-      })
-      if (!path) return
       const header = 'Date,Category,Description,Amount\n'
       const rows = filtered.map(e =>
         `${e.date},"${catLabel(e.categoryId).replace(/"/g, '""')}","${e.description.replace(/"/g, '""')}",${e.amount.toFixed(2)}`,
       ).join('\n')
-      await invoke('write_ledger', { path, content: header + rows })
+      const content = header + rows
+      if (isDesktop) {
+        const path = await save({
+          defaultPath: `ledger-${selectedMonth}.csv`,
+          filters: [{ name: 'CSV', extensions: ['csv'] }],
+        })
+        if (!path) return
+        await invoke('write_ledger', { path, content })
+      } else {
+        downloadFile(`ledger-${selectedMonth}.csv`, content, 'text/csv;charset=utf-8')
+      }
     } catch (err) {
       setExportError(String(err))
     }

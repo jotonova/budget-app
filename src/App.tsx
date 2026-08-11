@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { loadLedger } from './lib/persistence'
+import { isWeb, isDesktop } from './lib/platform'
+import WebSignIn from './components/WebSignIn'
 import { useLedgerStore } from './store/ledgerStore'
 import { useAuthStore } from './store/authStore'
 import { useHouseholdStore } from './store/householdStore'
@@ -43,6 +45,7 @@ export default function App() {
   const [showOnboarding, setShowOnboarding] = useState(false)
 
   useEffect(() => {
+    if (isWeb) { setReady(true); return } // web has no local file; sign-in gates the app
     loadLedger()
       .then(d => {
         init(d)
@@ -72,7 +75,7 @@ export default function App() {
     const signedIn = authStatus === 'signed-in'
     const hid = signedIn ? activeHousehold : null
     if (hid) useProfileStore.getState().useHousehold(hid, activeHouseholdName ?? 'Household')
-    else useProfileStore.getState().useLocal()
+    else if (isDesktop) useProfileStore.getState().useLocal() // web has no local mode
   }, [authStatus, activeHousehold, activeHouseholdName, ready])
 
   // ── AddExpense callbacks ───────────────────────────────────────────────────
@@ -143,6 +146,11 @@ export default function App() {
         Opening your budget…
       </div>
     )
+  }
+
+  // Web is cloud-only: gate the whole app behind Google sign-in.
+  if (isWeb && authStatus !== 'signed-in') {
+    return <WebSignIn />
   }
 
   // ── Main render ────────────────────────────────────────────────────────────
