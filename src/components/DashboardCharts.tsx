@@ -129,7 +129,7 @@ export default function DashboardCharts() {
           <>
             {/* Donut */}
             {(() => {
-              const donutPx = 220
+              const donutPx = isMobile ? 176 : 220
               return (
                 <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', padding: '8px 0' }}>
                   <PieChart width={donutPx} height={donutPx} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -137,8 +137,8 @@ export default function DashboardCharts() {
                       data={pieData}
                       cx={donutPx / 2}
                       cy={donutPx / 2}
-                      innerRadius={62}
-                      outerRadius={104}
+                      innerRadius={isMobile ? 50 : 62}
+                      outerRadius={isMobile ? 83 : 104}
                       startAngle={90}
                       endAngle={-270}
                       dataKey="value"

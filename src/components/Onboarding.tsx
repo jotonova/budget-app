@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/authStore'
 import { useHouseholdStore } from '../store/householdStore'
 import { useProfileStore } from '../store/profileStore'
 import { markDeviceOnboarded } from '../lib/persistence'
+import { useIsMobile } from '../lib/useIsMobile'
 import { generateId, formatCurrency } from '../lib/utils'
 import { formatInviteCode } from '../lib/inviteCode'
 
@@ -76,6 +77,7 @@ export default function Onboarding({ onClose }: Props) {
   const profileHouseholdName = useProfileStore(s => s.householdName)
   const hs = useHouseholdStore()
   const isOwner = hs.households.find(h => h.householdId === hs.currentId)?.role === 'owner'
+  const isMobile = useIsMobile()
 
   const [step, setStep] = useState(0)
   // True once the user JOINS an existing household during setup. Joiners skip the
@@ -351,7 +353,7 @@ export default function Onboarding({ onClose }: Props) {
                         ))}
                       </select>
                       {income.length > 1 && (
-                        <button onClick={() => setIncome(prev => prev.filter(r => r.id !== row.id))} style={linkBtn} aria-label="Remove income source">Remove</button>
+                        <button onClick={() => setIncome(prev => prev.filter(r => r.id !== row.id))} style={{ ...linkBtn, ...(isMobile ? { padding: '10px 12px', minHeight: 44 } : {}) }} aria-label="Remove income source">Remove</button>
                       )}
                     </div>
                     {preview > 0 && (
@@ -384,15 +386,18 @@ export default function Onboarding({ onClose }: Props) {
                       {groupLabel}
                     </p>
                     {rows.map(c => (
-                      <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0' }}>
+                      <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '10px 0' : '7px 0' }}>
                         <input
                           type="checkbox"
                           checked={c.checked}
                           onChange={e => setCats(prev => prev.map(x => x.id === c.id ? { ...x, checked: e.target.checked } : x))}
                           aria-label={`Include ${c.name}`}
-                          style={{ width: 17, height: 17, accentColor: 'var(--color-navy-soft)', flexShrink: 0, cursor: 'pointer' }}
+                          style={{ width: isMobile ? 24 : 17, height: isMobile ? 24 : 17, accentColor: 'var(--color-navy-soft)', flexShrink: 0, cursor: 'pointer' }}
                         />
-                        <span style={{ flex: 1, fontSize: 15, color: c.checked ? 'var(--color-ink)' : 'var(--color-ink-soft)' }}>{c.name}</span>
+                        <span
+                          onClick={isMobile ? () => setCats(prev => prev.map(x => x.id === c.id ? { ...x, checked: !x.checked } : x)) : undefined}
+                          style={{ flex: 1, fontSize: 15, color: c.checked ? 'var(--color-ink)' : 'var(--color-ink-soft)', cursor: isMobile ? 'pointer' : undefined, padding: isMobile ? '6px 0' : 0 }}
+                        >{c.name}</span>
                         <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--color-gold)', borderRadius: 6, backgroundColor: c.checked ? 'white' : 'var(--color-parchment)', width: 120 }}>
                           <span style={{ padding: '0 8px', color: 'var(--color-ink-soft)', fontSize: 14 }}>$</span>
                           <input

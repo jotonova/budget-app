@@ -240,7 +240,7 @@ export default function LedgerView({ onBack, onExpenseClick }: Props) {
                 {allCats.map(cat => (
                   <label
                     key={cat.id}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 16px', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--color-ink)' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '12px 16px' : '7px 16px', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--color-ink)' }}
                     onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--color-parchment-light)')}
                     onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
                   >
@@ -248,7 +248,7 @@ export default function LedgerView({ onBack, onExpenseClick }: Props) {
                       type="checkbox"
                       checked={selectedCategories.includes(cat.id)}
                       onChange={() => toggleCategory(cat.id)}
-                      style={{ accentColor: 'var(--color-navy)' }}
+                      style={{ accentColor: 'var(--color-navy)', width: isMobile ? 22 : undefined, height: isMobile ? 22 : undefined, flexShrink: 0 }}
                     />
                     {catLabel(cat.id)}
                   </label>

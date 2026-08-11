@@ -317,7 +317,7 @@ export default function YearToDate({ onBack }: Props) {
             <>
               {/* Donut */}
               {(() => {
-                const donutPx = 240
+                const donutPx = isMobile ? 188 : 240
                 return (
                   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', border: '1px solid var(--color-gold)', borderRadius: 12, backgroundColor: 'white', padding: 24 }}>
                     <PieChart width={donutPx} height={donutPx} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -325,8 +325,8 @@ export default function YearToDate({ onBack }: Props) {
                         data={pieData}
                         cx={donutPx / 2}
                         cy={donutPx / 2}
-                        innerRadius={68}
-                        outerRadius={112}
+                        innerRadius={isMobile ? 53 : 68}
+                        outerRadius={isMobile ? 88 : 112}
                         startAngle={90}
                         endAngle={-270}
                         dataKey="value"
