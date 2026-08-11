@@ -3,6 +3,7 @@ import { format } from 'date-fns'
 import { PieChart, Pie, Cell, Tooltip } from 'recharts'
 import SceneHeader from './scenes/SceneHeader'
 import { useLedgerStore } from '../store/ledgerStore'
+import { useIsMobile } from '../lib/useIsMobile'
 import { formatCurrency, getCurrentMonth } from '../lib/utils'
 import type { Expense } from '../lib/types'
 
@@ -34,6 +35,7 @@ function allMonthsThisYear(): string[] {
 }
 
 export default function YearToDate({ onBack }: Props) {
+  const isMobile = useIsMobile()
   const data = useLedgerStore(s => s.data)
   const expensesForMonth = useLedgerStore(s => s.expensesForMonth)
   const totalIncome = useLedgerStore(s => s.totalIncome)
@@ -146,7 +148,7 @@ export default function YearToDate({ onBack }: Props) {
         subtitle={`Year to Date  ·  ${YEAR}`}
       />
 
-      <div style={{ maxWidth: 900, margin: '0 auto', padding: '32px 24px 80px' }}>
+      <div style={{ maxWidth: 900, margin: '0 auto', padding: isMobile ? '20px 16px 96px' : '32px 24px 80px' }}>
 
         {/* Back */}
         <button
@@ -167,7 +169,7 @@ export default function YearToDate({ onBack }: Props) {
           <p style={{ fontFamily: 'var(--font-body)', fontSize: 15, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--color-gold)', marginBottom: 16 }}>
             Year to Date
           </p>
-          <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+          <div className="grid gap-6" style={{ gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)' }}>
             {[
               { label: 'Total Income', value: ytdTotals.totalIncomeSoFar },
               { label: 'Total Spent', value: ytdTotals.totalSpent },
@@ -213,9 +215,9 @@ export default function YearToDate({ onBack }: Props) {
                   style={{
                     width: '100%',
                     display: 'grid',
-                    gridTemplateColumns: '120px 1fr 80px 90px',
+                    gridTemplateColumns: isMobile ? '76px 1fr 64px 72px' : '120px 1fr 80px 90px',
                     alignItems: 'center',
-                    padding: '14px 20px',
+                    padding: isMobile ? '13px 12px' : '14px 20px',
                     background: 'none',
                     border: 'none',
                     cursor: isFuture || isBeforeTracking ? 'default' : 'pointer',

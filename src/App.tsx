@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { loadLedger } from './lib/persistence'
 import { isWeb, isDesktop } from './lib/platform'
+import { useIsMobile } from './lib/useIsMobile'
 import WebSignIn from './components/WebSignIn'
+import MobileNav from './components/MobileNav'
 import { useLedgerStore } from './store/ledgerStore'
 import { useAuthStore } from './store/authStore'
 import { useHouseholdStore } from './store/householdStore'
@@ -43,6 +45,7 @@ export default function App() {
   const [detailCategoryId, setDetailCategoryId] = useState<string | null>(null)
   const [addExpenseCategoryId, setAddExpenseCategoryId] = useState<string | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
+  const isMobile = useIsMobile()
 
   useEffect(() => {
     if (isWeb) { setReady(true); return } // web has no local file; sign-in gates the app
@@ -236,6 +239,24 @@ export default function App() {
       {/* First-run onboarding overlay */}
       {showOnboarding && (
         <Onboarding onClose={() => setShowOnboarding(false)} />
+      )}
+
+      {/* Mobile bottom navigation (hidden on desktop widths) */}
+      {isMobile && !showOnboarding && (
+        <MobileNav
+          active={
+            page === 'dashboard' ? 'dashboard'
+              : page === 'ledger' ? 'ledger'
+              : page === 'add-expense' ? 'add-expense'
+              : page === 'settings' ? 'settings'
+              : 'other'
+          }
+          onNavigate={(target) => {
+            setEditingExpense(null)
+            if (target === 'add-expense') { setAddExpenseCategoryId(null); setPage('add-expense') }
+            else setPage(target)
+          }}
+        />
       )}
     </>
   )

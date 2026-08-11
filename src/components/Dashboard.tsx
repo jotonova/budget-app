@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import SceneHeader from './scenes/SceneHeader'
+import { useIsMobile } from '../lib/useIsMobile'
 import GroupCard, { StandaloneCard } from './GroupCard'
 import AlertBanner from './AlertBanner'
 import DashboardCharts from './DashboardCharts'
@@ -62,6 +63,7 @@ export default function Dashboard({ onAddExpense, onExpenseClick, onCategoryClic
 
   const insight = insightForDay(totalIncome, totalSpent)
   const dateLabel = formatDateLong(today())
+  const isMobile = useIsMobile()
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -73,7 +75,7 @@ export default function Dashboard({ onAddExpense, onExpenseClick, onCategoryClic
       />
       <AlertBanner />
 
-      <div style={{ maxWidth: 900, margin: '0 auto', padding: '32px 24px 64px' }}>
+      <div style={{ maxWidth: 900, margin: '0 auto', padding: isMobile ? '20px 16px 96px' : '32px 24px 64px' }}>
 
         {/* ── Hero card ────────────────────────────────────────────────── */}
         <div
@@ -121,7 +123,7 @@ export default function Dashboard({ onAddExpense, onExpenseClick, onCategoryClic
 
         {/* Essential groups — 2-column grid */}
         {essentialGroups.length > 0 && (
-          <div className="grid gap-4 mb-4" style={{ gridTemplateColumns: 'repeat(2, 1fr)', alignItems: 'start' }}>
+          <div className="grid gap-4 mb-4" style={{ gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', alignItems: 'start' }}>
             {essentialGroups.map(group => (
               <GroupCard
                 key={group.id}
@@ -136,7 +138,7 @@ export default function Dashboard({ onAddExpense, onExpenseClick, onCategoryClic
 
         {/* Essential standalones */}
         {essentialStandalones.length > 0 && (
-          <div className="grid gap-4 mb-4" style={{ gridTemplateColumns: 'repeat(2, 1fr)', alignItems: 'start' }}>
+          <div className="grid gap-4 mb-4" style={{ gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', alignItems: 'start' }}>
             {essentialStandalones.map(cat => (
               <StandaloneCard key={cat.id} category={cat} onExpenseClick={onExpenseClick} onCategoryClick={onCategoryClick} />
             ))}
@@ -147,7 +149,7 @@ export default function Dashboard({ onAddExpense, onExpenseClick, onCategoryClic
         <SectionHeader label="Non-Essential" />
 
         {nonEssentialGroups.length > 0 && (
-          <div className="grid gap-4 mb-4" style={{ gridTemplateColumns: 'repeat(2, 1fr)', alignItems: 'start' }}>
+          <div className="grid gap-4 mb-4" style={{ gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', alignItems: 'start' }}>
             {nonEssentialGroups.map(group => (
               <GroupCard
                 key={group.id}
@@ -161,7 +163,7 @@ export default function Dashboard({ onAddExpense, onExpenseClick, onCategoryClic
         )}
 
         {nonEssentialStandalones.length > 0 && (
-          <div className="grid gap-4 mb-4" style={{ gridTemplateColumns: 'repeat(2, 1fr)', alignItems: 'start' }}>
+          <div className="grid gap-4 mb-4" style={{ gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', alignItems: 'start' }}>
             {nonEssentialStandalones.map(cat => (
               <StandaloneCard key={cat.id} category={cat} onExpenseClick={onExpenseClick} onCategoryClick={onCategoryClick} />
             ))}

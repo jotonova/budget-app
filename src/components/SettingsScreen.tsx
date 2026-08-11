@@ -22,6 +22,7 @@ import { isDesktop } from '../lib/platform'
 import { downloadFile, pickTextFile } from '../lib/webFiles'
 import SceneHeader from './scenes/SceneHeader'
 import AccountPanel from './AccountPanel'
+import { useIsMobile } from '../lib/useIsMobile'
 import { useLedgerStore } from '../store/ledgerStore'
 import { persistChange } from '../lib/sync'
 import { formatCurrency, generateId } from '../lib/utils'
@@ -232,8 +233,11 @@ export default function SettingsScreen({ onBack, onRerunSetup }: Props) {
     alertThresholdDefault: 0.9, currency: 'USD' as const, monthStartDay: 1, appTitle: 'My Budget', onboarded: true,
   })
 
+  const isMobile = useIsMobile()
+  // On touch, require a short press-and-hold to start a drag so normal scrolling
+  // still works. Desktop keeps the immediate-drag behavior (no constraint).
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, isMobile ? { activationConstraint: { delay: 200, tolerance: 8 } } : undefined),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
@@ -413,7 +417,7 @@ export default function SettingsScreen({ onBack, onRerunSetup }: Props) {
         subtitle="Manage your budget configuration"
       />
 
-      <div style={{ maxWidth: 800, margin: '0 auto', padding: '32px 24px 80px' }}>
+      <div style={{ maxWidth: 800, margin: '0 auto', padding: isMobile ? '20px 16px 96px' : '32px 24px 80px' }}>
 
         {/* Back */}
         <button

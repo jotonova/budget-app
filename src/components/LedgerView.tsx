@@ -5,6 +5,7 @@ import { isDesktop } from '../lib/platform'
 import { downloadFile } from '../lib/webFiles'
 import SceneHeader from './scenes/SceneHeader'
 import { useLedgerStore } from '../store/ledgerStore'
+import { useIsMobile } from '../lib/useIsMobile'
 import { formatCurrency, formatDateShort, getCurrentMonth } from '../lib/utils'
 import { buildLedgerPdf } from '../lib/exportPdf'
 import type { Expense } from '../lib/types'
@@ -29,6 +30,7 @@ function buildMonthOptions(): { label: string; value: string }[] {
 }
 
 export default function LedgerView({ onBack, onExpenseClick }: Props) {
+  const isMobile = useIsMobile()
   const data = useLedgerStore(s => s.data)
   const expensesForMonth = useLedgerStore(s => s.expensesForMonth)
 
@@ -171,7 +173,7 @@ export default function LedgerView({ onBack, onExpenseClick }: Props) {
         subtitle="A complete record of household accounts"
       />
 
-      <div style={{ maxWidth: 960, margin: '0 auto', padding: '32px 24px 80px' }}>
+      <div style={{ maxWidth: 960, margin: '0 auto', padding: isMobile ? '20px 16px 96px' : '32px 24px 80px' }}>
 
         {/* Back */}
         <button
@@ -296,7 +298,8 @@ export default function LedgerView({ onBack, onExpenseClick }: Props) {
 
         {/* ── Table ── */}
         <div style={{ border: '1px solid var(--color-gold)', borderRadius: 8, overflow: 'hidden', backgroundColor: 'white' }}>
-          {/* Sticky header */}
+          {/* Sticky header (hidden on mobile — rows become cards) */}
+          {!isMobile && (
           <div
             style={{
               display: 'grid',
@@ -334,6 +337,7 @@ export default function LedgerView({ onBack, onExpenseClick }: Props) {
               </span>
             ))}
           </div>
+          )}
 
           {/* Rows */}
           {filtered.length === 0 ? (
@@ -347,39 +351,64 @@ export default function LedgerView({ onBack, onExpenseClick }: Props) {
                 onClick={() => onExpenseClick(expense)}
                 className="w-full text-left"
                 style={{
-                  display: 'grid',
-                  gridTemplateColumns: '120px 1fr 1fr 100px 40px',
-                  padding: '13px 20px',
-                  borderTop: i > 0 ? '1px solid var(--color-parchment-dark)' : 'none',
+                  display: isMobile ? 'flex' : 'grid',
+                  flexDirection: isMobile ? 'column' : undefined,
+                  gap: isMobile ? 3 : undefined,
+                  gridTemplateColumns: isMobile ? undefined : '120px 1fr 1fr 100px 40px',
+                  padding: isMobile ? '12px 16px' : '13px 20px',
+                  minHeight: isMobile ? 56 : undefined,
                   background: 'none',
                   border: 'none',
                   borderTopWidth: i > 0 ? 1 : 0,
                   borderTopStyle: 'solid',
                   borderTopColor: 'var(--color-parchment-dark)',
                   cursor: 'pointer',
-                  alignItems: 'center',
+                  alignItems: isMobile ? 'stretch' : 'center',
                   transition: 'background 0.1s',
                 }}
                 onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--color-parchment-light)')}
                 onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
               >
-                <span style={{ fontFamily: 'var(--font-body)', fontSize: 16, color: 'var(--color-ink-soft)' }}>
-                  {formatDateShort(expense.date)}
-                </span>
-                <span style={{ fontFamily: 'var(--font-body)', fontSize: 16, color: 'var(--color-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 12 }}>
-                  {catLabel(expense.categoryId)}
-                </span>
-                <span style={{ fontFamily: 'var(--font-body)', fontSize: 16, color: 'var(--color-ink-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 12 }}>
-                  {expense.description || '—'}
-                </span>
-                <span style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 500, color: 'var(--color-navy)', textAlign: 'right' }}>
-                  {formatCurrency(expense.amount)}
-                </span>
-                <span style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <svg width="14" height="14" viewBox="0 0 14 14" style={{ stroke: 'var(--color-ink-soft)', fill: 'none', strokeWidth: 1.4 }}>
-                    <path d="M2 7h10M8 3l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </span>
+                {isMobile ? (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+                      <span style={{ fontFamily: 'var(--font-body)', fontSize: 16, fontWeight: 600, color: 'var(--color-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {catLabel(expense.categoryId)}
+                      </span>
+                      <span style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 600, color: 'var(--color-navy)', flexShrink: 0 }}>
+                        {formatCurrency(expense.amount)}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                      <span style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--color-ink-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {expense.description || '—'}
+                      </span>
+                      <span style={{ fontFamily: 'var(--font-body)', fontSize: 14, color: 'var(--color-ink-soft)', flexShrink: 0 }}>
+                        {formatDateShort(expense.date)}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ fontFamily: 'var(--font-body)', fontSize: 16, color: 'var(--color-ink-soft)' }}>
+                      {formatDateShort(expense.date)}
+                    </span>
+                    <span style={{ fontFamily: 'var(--font-body)', fontSize: 16, color: 'var(--color-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 12 }}>
+                      {catLabel(expense.categoryId)}
+                    </span>
+                    <span style={{ fontFamily: 'var(--font-body)', fontSize: 16, color: 'var(--color-ink-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 12 }}>
+                      {expense.description || '—'}
+                    </span>
+                    <span style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 500, color: 'var(--color-navy)', textAlign: 'right' }}>
+                      {formatCurrency(expense.amount)}
+                    </span>
+                    <span style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <svg width="14" height="14" viewBox="0 0 14 14" style={{ stroke: 'var(--color-ink-soft)', fill: 'none', strokeWidth: 1.4 }}>
+                        <path d="M2 7h10M8 3l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </span>
+                  </>
+                )}
               </button>
             ))
           )}
@@ -388,14 +417,15 @@ export default function LedgerView({ onBack, onExpenseClick }: Props) {
           {filtered.length > 0 && (
             <div
               style={{
-                display: 'grid',
-                gridTemplateColumns: '120px 1fr 1fr 100px 40px',
-                padding: '12px 20px',
+                display: isMobile ? 'flex' : 'grid',
+                justifyContent: isMobile ? 'space-between' : undefined,
+                gridTemplateColumns: isMobile ? undefined : '120px 1fr 1fr 100px 40px',
+                padding: isMobile ? '12px 16px' : '12px 20px',
                 borderTop: '2px double var(--color-navy)',
                 backgroundColor: 'var(--color-parchment-light)',
               }}
             >
-              <span style={{ fontFamily: 'var(--font-body)', fontSize: 15, color: 'var(--color-ink-soft)', gridColumn: '1 / 4' }}>
+              <span style={{ fontFamily: 'var(--font-body)', fontSize: 15, color: 'var(--color-ink-soft)', gridColumn: isMobile ? undefined : '1 / 4' }}>
                 {filtered.length} {filtered.length === 1 ? 'entry' : 'entries'}
               </span>
               <span style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 600, color: 'var(--color-navy)', textAlign: 'right' }}>
