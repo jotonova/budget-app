@@ -30,16 +30,43 @@ Banks disagree on: column order & headers, date format (`MM/DD/YYYY` vs `YYYY-MM
 **Parser:** PapaParse (battle-tested, streams, header mode, works in browser + Tauri webview). Zero native deps.
 
 **Column-mapping step (required):** after parse, show a mapping screen:
-- Pick which column is **Date**, **Description/Payee**, and the **amount**, where amount is one of:
-  - *Single signed column* + a **sign convention toggle** ("a negative number means money **out**" — the common case — vs the rare inverted export), or
-  - *Separate Debit and Credit columns*.
+- Pick which column is **Date**, **Description/Payee**, and how the **amount** is encoded — the mapping model supports **three amount modes** (the parser branches on a `amountMode` discriminator so a profile captures exactly one):
+  - **`signed`** — one signed amount column + a **sign convention toggle** ("a negative number means money **out**" — the common case — vs the rare inverted export).
+  - **`debitCredit`** — **two separate columns**, one for money **out** and one for money **in** (each holds a positive number or is blank on a given row). This is the PNC case (see below). The parser reads: if the debit column is non-empty → `amount = -value`, `direction = 'debit'`; if the credit column is non-empty → `amount = +value`, `direction = 'credit'`. Exactly one is populated per row.
+  - **`drCrFlag`** *(handled by the same mapping as `signed` + a flag column)* — one magnitude column plus a `Dr/Cr` (or `Debit/Credit`) indicator column. Lower priority; add if a bank needs it.
 - Choose the **date format** (auto-guess from the data, let the user correct).
 - A **live preview table** re-renders the first ~8 parsed rows with the interpretation applied (parsed date, cleaned merchant, signed amount, and a **money-in / money-out** chip) so the user *confirms the signs are right before anything imports.* This preview is the single best defense against the debit/credit-sign footgun (see Risks).
 
+Mapping model (shape a profile stores):
+```ts
+type AmountMapping =
+  | { mode: 'signed'; amountCol: string; negativeMeans: 'out' | 'in' }
+  | { mode: 'debitCredit'; debitCol: string; creditCol: string }   // PNC: Withdrawals / Deposits
+type ImportProfile = {
+  id: string
+  displayName: string          // "PNC Checking"
+  headerSignature: string      // hash of normalized header row → auto-detect
+  dateCol: string; descriptionCol: string
+  dateFormat: string           // e.g. "MM/DD/YYYY"
+  amount: AmountMapping
+  builtIn?: boolean
+}
+```
+
 **Mapping UI vs saved per-bank templates — recommendation: do BOTH, in this order.**
 - Always offer the **mapping UI** (handles any bank, including one-offs).
-- On a successful import, **save the mapping as a named "import profile"** keyed by a **header signature** (a hash of the normalized header row). Next time a file with the same signature is imported, auto-apply the saved profile and skip straight to preview ("Detected *Chase Checking* layout"). The user can still edit.
-- Profiles are **per household** (stored like other data, synced), so either partner benefits once one of them maps a bank. Ship a couple of **built-in starter profiles** for common exporters (Chase, Amex, Capital One, generic "signed amount" and "debit/credit" shapes) as a head start — but never assume; always let the preview confirm.
+- On a successful import, **save the mapping as a named "import profile"** keyed by a **header signature** (a hash of the normalized header row). Next time a file with the same signature is imported, auto-apply the saved profile and skip straight to preview ("Detected *PNC Checking* layout"). The user can still edit.
+- Profiles are **per household** (stored like other data, synced), so either partner benefits once one of them maps a bank. Ship **built-in starter profiles** (a generic "signed amount" shape, a generic "debit/credit" shape, and named banks) as a head start — but never assume; always let the preview confirm.
+
+**PNC (first supported bank).** Justin + Amy share one **PNC checking** account.
+
+*Note:* the real sample (PNC "Account Activity" download → `accountActivityExport.csv`) turned out to be a **single signed `Amount`** layout, **not** the separate Withdrawals/Deposits columns first assumed. The two-column `debitCredit` mode still ships (some PNC exports and other banks use it), but the seeded PNC profile follows the real file:
+- **Columns:** `Transaction Date, Transaction Description, Amount, Category`.
+- **Amount is a single signed, currency-decorated column:** `- $123.45` (out) / `+ $1,234.56` (in). The shared `parseAmount()` strips a leading `+`/`-`, `$`, spaces, and thousands commas, then applies the sign → `amountMode: 'signed'`, `negativeMeans: 'out'`.
+- **Date carries a weekday prefix:** cells look like `Tuesday - 08/11/2026`. Parse by extracting the first `\d{1,2}/\d{1,2}/\d{4}` (`dateFormat: MM/DD/YYYY`), ignoring the prefix.
+- **`Category`** is PNC's own guess — **ignored** (our merchant rules + manual review own categorization; possible future hint).
+- **Seed built-in "PNC Checking (Account Activity)" profile:** `dateCol: 'Transaction Date'`, `descriptionCol: 'Transaction Description'`, `dateFormat: 'MM/DD/YYYY'` (weekday-prefix tolerant), `amount: { mode: 'signed', amountCol: 'Amount', negativeMeans: 'out' }`. If Justin also has a Withdrawals/Deposits export, we add a second built-in profile (distinct header signature → auto-detected independently).
+- **90-day export cap:** PNC only exports **up to 90 days** of history per download. Fine for the recommended weekly rhythm; surface it in the **in-app PNC import instructions** ("PNC lets you download up to 90 days at a time — for the first import, grab the last 90 days; after that a weekly pull is plenty. Overlapping ranges are safe — duplicates are skipped."). Longer back-fill = a few sequential 90-day exports, all de-duped on import (§5).
 
 ### 1c. OFX / QFX / QBO — standardized, and a dedup superpower
 OFX (and its Quicken `.qfx` / QuickBooks `.qbo` variants) is a semi-structured SGML/XML format with **named fields** — no column mapping needed. Crucially, each transaction carries a bank-assigned **`FITID`** (financial-institution transaction id) that is **stable and unique per account** → the ideal dedup key (§5). Direction is explicit (`TRNAMT` sign + `TRNTYPE`), killing the sign ambiguity.

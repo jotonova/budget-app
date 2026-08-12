@@ -42,3 +42,8 @@ statement*.csv
 *statement*.csv
 *-transactions.csv
 *_transactions.csv
+accountActivityExport*.csv          # PNC's default export filename
+# Belt-and-suspenders: ignore ALL .csv anywhere EXCEPT our synthetic committed
+# fixtures (*.fixture.csv). No real bank CSV can be committed to this public repo.
+*.csv
+!*.fixture.csv
