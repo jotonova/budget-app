@@ -2,7 +2,7 @@ import { useState, useMemo, type CSSProperties } from 'react'
 import SceneHeader from './scenes/SceneHeader'
 import { useIsMobile } from '../lib/useIsMobile'
 import { useLedgerStore } from '../store/ledgerStore'
-import { formatCurrency } from '../lib/utils'
+import { formatCurrency, getCurrentMonth } from '../lib/utils'
 import { pickStatementFile } from '../lib/import/pickFile'
 import { readHeaders, parseStatement, toPendingTransactions } from '../lib/import/parse'
 import { detectProfile } from '../lib/import/profiles'
@@ -33,6 +33,7 @@ export default function ImportReview({ onBack }: Props) {
   const approveRefund = useLedgerStore(s => s.approveRefund)
   const approveOneTimeIncome = useLedgerStore(s => s.approveOneTimeIncome)
   const skipPending = useLedgerStore(s => s.skipPending)
+  const bulkSkipPending = useLedgerStore(s => s.bulkSkipPending)
   const addMerchantRule = useLedgerStore(s => s.addMerchantRule)
   const isMobile = useIsMobile()
 
@@ -41,6 +42,8 @@ export default function ImportReview({ onBack }: Props) {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [tally, setTally] = useState({ approved: 0, skipped: 0 })
   const [remember, setRemember] = useState<{ merchant: string; categoryId: string } | null>(null)
+  const [beforeDate, setBeforeDate] = useState(`${getCurrentMonth()}-01`)
+  const [bulkConfirm, setBulkConfirm] = useState<{ ids: string[]; label: string } | null>(null)
 
   const pending = (data?.pendingTransactions ?? [])
     .filter(p => p.status === 'pending')
@@ -119,6 +122,15 @@ export default function ImportReview({ onBack }: Props) {
   function handleSkip(id: string, reason?: string) {
     skipPending(id, reason)
     setTally(t => ({ ...t, skipped: t.skipped + 1 }))
+  }
+  function askBulk(ids: string[], label: string) {
+    if (ids.length > 0) setBulkConfirm({ ids, label })
+  }
+  function runBulk() {
+    if (!bulkConfirm) return
+    const n = bulkSkipPending(bulkConfirm.ids, 'Bulk skip')
+    setTally(t => ({ ...t, skipped: t.skipped + n }))
+    setBulkConfirm(null)
   }
 
   return (
@@ -210,6 +222,43 @@ export default function ImportReview({ onBack }: Props) {
             {(tally.approved > 0 || tally.skipped > 0) && ` · ${tally.approved} approved, ${tally.skipped} skipped`}
           </span>
         </div>
+
+        {/* Bulk clear — skips only, never changes the budget */}
+        {pending.length > 0 && (
+          bulkConfirm ? (
+            <div className="rounded-lg mb-4 p-4" style={{ border: '1px solid var(--color-navy)', backgroundColor: '#eef4fb' }}>
+              <p style={{ fontFamily: 'var(--font-body)', fontSize: 15, color: 'var(--color-ink)', marginBottom: 12, lineHeight: 1.6 }}>
+                Skip <strong>{bulkConfirm.ids.length}</strong> transaction{bulkConfirm.ids.length === 1 ? '' : 's'} ({bulkConfirm.label})? This clears them from the review list and does <strong>not</strong> change your budget.
+              </p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <RowButton primary onClick={runBulk}>Skip {bulkConfirm.ids.length}</RowButton>
+                <RowButton onClick={() => setBulkConfirm(null)}>Cancel</RowButton>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg mb-4 p-4" style={{ border: '1px solid var(--color-parchment-dark)', backgroundColor: 'white' }}>
+              <p style={{ fontFamily: 'var(--font-body)', fontSize: 12, fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--color-ink-soft)', marginBottom: 10 }}>
+                Bulk clear · skips only, never changes your budget
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                <RowButton onClick={() => askBulk(pending.map(p => p.id), 'all remaining')}>
+                  Skip all remaining ({pending.length})
+                </RowButton>
+                <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                  <input type="date" value={beforeDate} onChange={e => setBeforeDate(e.target.value)} style={selectStyle(isMobile)} />
+                  <RowButton onClick={() => askBulk(pending.filter(p => p.date < beforeDate).map(p => p.id), `dated before ${beforeDate}`)}>
+                    Skip all before ({pending.filter(p => p.date < beforeDate).length})
+                  </RowButton>
+                </span>
+                {flaggedCount > 0 && (
+                  <RowButton onClick={() => askBulk([...matches.keys()], 'flagged possible duplicates')}>
+                    Skip flagged dups ({flaggedCount})
+                  </RowButton>
+                )}
+              </div>
+            </div>
+          )
+        )}
 
         {categories.length === 0 && pending.length > 0 && (
           <div className="rounded-lg mb-4 p-4" style={{ backgroundColor: '#fef9e7', border: '1px solid var(--color-gold)' }}>

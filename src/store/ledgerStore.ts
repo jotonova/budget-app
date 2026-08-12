@@ -34,6 +34,11 @@ interface LedgerStore {
   /** Skip a pending row (optionally with a reason). It leaves the review list but
    *  stays recorded so its dedupKey blocks re-imports. */
   skipPending: (pendingId: string, reason?: string) => void
+  /** Bulk-skip many pending rows in ONE write. ONLY rows currently status==='pending'
+   *  are affected — approved expenses and budget totals are never touched. Skipped
+   *  rows stay recorded so their dedupKeys keep blocking re-imports. Returns how
+   *  many were skipped. */
+  bulkSkipPending: (ids: string[], reason?: string) => number
   /** Approve a pending row as a SPLIT across categories (amounts should sum to the
    *  row total). Creates one expense per part; ids derived from the pending id.
    *  Each part may carry an optional `note` → that line's expense description. */
@@ -185,6 +190,27 @@ export const useLedgerStore = create<LedgerStore>((set, get) => ({
     }
     set({ data: next })
     persistChange(s.data, next).catch(console.error)
+  },
+
+  bulkSkipPending(ids, reason) {
+    const s = get()
+    if (!s.data) return 0
+    const idSet = new Set(ids)
+    let count = 0
+    const nextPending = s.data.pendingTransactions.map((x) => {
+      // Guard on status==='pending' — never re-touch approved/already-skipped rows,
+      // so this can't disturb any created expense or the budget.
+      if (idSet.has(x.id) && x.status === 'pending') {
+        count++
+        return { ...x, status: 'skipped' as const, ...(reason ? { skipReason: reason } : {}) }
+      }
+      return x
+    })
+    if (count === 0) return 0
+    const next = { ...s.data, pendingTransactions: nextPending }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error) // one write → one cloud sync
+    return count
   },
 
   approveSplit(pendingId, parts, paymentMethodId) {
