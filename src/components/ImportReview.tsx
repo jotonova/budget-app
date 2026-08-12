@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react'
+import { useState, useMemo, type CSSProperties } from 'react'
 import SceneHeader from './scenes/SceneHeader'
 import { useIsMobile } from '../lib/useIsMobile'
 import { useLedgerStore } from '../store/ledgerStore'
@@ -6,6 +6,7 @@ import { formatCurrency } from '../lib/utils'
 import { pickStatementFile } from '../lib/import/pickFile'
 import { readHeaders, parseStatement, toPendingTransactions } from '../lib/import/parse'
 import { detectProfile } from '../lib/import/profiles'
+import { findManualMatch, type ManualMatch } from '../lib/import/duplicates'
 import type { PendingTransaction, Category, Group, PaymentMethod, MerchantRule } from '../lib/types'
 
 interface Props { onBack: () => void }
@@ -51,6 +52,23 @@ export default function ImportReview({ onBack }: Props) {
   const paymentMethods = (data?.paymentMethods ?? []).slice().sort((a, b) => a.order - b.order)
   const merchantRules = data?.merchantRules ?? []
   const categoryName = (id: string) => categories.find(c => c.id === id)?.name ?? 'that category'
+
+  // Flag pending rows that may duplicate a hand-entered expense. Exclude expenses
+  // this importer created (approved rows) so we never flag against our own output.
+  const expenses = data?.expenses ?? []
+  const allPending = data?.pendingTransactions ?? []
+  const matches = useMemo(() => {
+    const importCreated = new Set<string>()
+    for (const pt of allPending) for (const r of pt.resolvedRefs ?? []) importCreated.add(r)
+    const m = new Map<string, ManualMatch>()
+    for (const p of allPending) {
+      if (p.status !== 'pending') continue
+      const hit = findManualMatch(p, expenses, importCreated)
+      if (hit) m.set(p.id, hit)
+    }
+    return m
+  }, [allPending, expenses])
+  const flaggedCount = matches.size
 
   async function handleImport() {
     setBusy(true); setErr(null); setSummary(null)
@@ -188,6 +206,7 @@ export default function ImportReview({ onBack }: Props) {
           </span>
           <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--color-ink-soft)' }}>
             {pending.length} pending
+            {flaggedCount > 0 && <span style={{ color: '#8a5a2b' }}> · ⚠ {flaggedCount} possible dup{flaggedCount === 1 ? '' : 's'}</span>}
             {(tally.approved > 0 || tally.skipped > 0) && ` · ${tally.approved} approved, ${tally.skipped} skipped`}
           </span>
         </div>
@@ -214,6 +233,8 @@ export default function ImportReview({ onBack }: Props) {
                 categories={categories}
                 paymentMethods={paymentMethods}
                 suggestedCategoryId={suggestCategory(p.merchant, merchantRules)}
+                match={matches.get(p.id)}
+                categoryName={categoryName}
                 isMobile={isMobile}
                 onApprove={handleApprove}
                 onSplit={handleSplit}
@@ -234,7 +255,7 @@ export default function ImportReview({ onBack }: Props) {
 const SKIP_REASONS = ['Transfer', 'Card payment', 'Not an expense']
 
 function PendingRow({
-  p, groups, categories, paymentMethods, suggestedCategoryId, isMobile,
+  p, groups, categories, paymentMethods, suggestedCategoryId, match, categoryName, isMobile,
   onApprove, onSplit, onRefund, onIncome, onSkip,
 }: {
   p: PendingTransaction
@@ -242,6 +263,8 @@ function PendingRow({
   categories: Category[]
   paymentMethods: PaymentMethod[]
   suggestedCategoryId?: string
+  match?: ManualMatch
+  categoryName: (id: string) => string
   isMobile: boolean
   onApprove: (p: PendingTransaction, categoryId: string, paymentMethodId?: string) => void
   onSplit: (id: string, parts: { categoryId: string; amount: number }[], paymentMethodId?: string) => void
@@ -251,6 +274,7 @@ function PendingRow({
 }) {
   const isCredit = p.direction === 'credit'
   const total = Math.abs(p.amount)
+  const [showMatch, setShowMatch] = useState(false)
 
   // Shared expense-side state
   const [catId, setCatId] = useState(suggestedCategoryId ?? '')
@@ -288,6 +312,29 @@ function PendingRow({
           {isCredit ? '+' : '−'}{formatCurrency(total)}
         </span>
       </div>
+
+      {/* ── Possible duplicate of a hand-entered expense (surface only) ── */}
+      {match && (
+        <div style={{ marginTop: 10, backgroundColor: '#fdf5e9', border: '1px solid #d9a441', borderRadius: 6, padding: '8px 10px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: '#8a5a2b' }}>
+              ⚠ Might already be in your budget
+            </span>
+            <span style={{ display: 'flex', gap: 8 }}>
+              <RowButton onClick={() => setShowMatch(v => !v)}>{showMatch ? 'Hide match' : 'See match'}</RowButton>
+              <RowButton onClick={() => onSkip(p.id, 'Possible duplicate')}>Skip — likely dup</RowButton>
+            </span>
+          </div>
+          {showMatch && (
+            <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--color-ink)', marginTop: 8, lineHeight: 1.6 }}>
+              Matches an existing expense: <strong>{formatCurrency(Math.abs(match.expense.amount))}</strong> on{' '}
+              <strong>{match.expense.date}</strong>{match.daysApart > 0 ? ` (${match.daysApart}d apart)` : ' (same day)'} in{' '}
+              <strong>{categoryName(match.expense.categoryId)}</strong>
+              {match.expense.description ? ` — “${match.expense.description}”` : ''}.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* ── Money OUT (debit): categorize first, then approve ── */}
       {!isCredit && (
