@@ -26,6 +26,13 @@ interface LedgerStore {
 
   // Statement import (Phase 4) — pending rows never touch the budget
   addPendingTransactions: (candidates: PendingTransaction[]) => number
+  /** Approve a pending row into a real expense. Idempotent: the expense id is
+   *  derived from the pending-row id, so re-approving / concurrent approval by
+   *  both partners converges to ONE expense. Returns the expense id. */
+  approvePending: (pendingId: string, categoryId: string, paymentMethodId?: string) => string | null
+  /** Skip a pending row (optionally with a reason). It leaves the review list but
+   *  stays recorded so its dedupKey blocks re-imports. */
+  skipPending: (pendingId: string, reason?: string) => void
 
   // Payment Methods
   addPaymentMethod: (name: string) => void
@@ -114,6 +121,53 @@ export const useLedgerStore = create<LedgerStore>((set, get) => ({
     set({ data: next })
     persistChange(s.data, next).catch(console.error)
     return fresh.length
+  },
+
+  approvePending(pendingId, categoryId, paymentMethodId) {
+    const s = get()
+    if (!s.data) return null
+    const p = s.data.pendingTransactions.find((x) => x.id === pendingId)
+    if (!p || p.status === 'approved') return null
+    // Deterministic, valid-uuid expense id (pending ids are uuids) → idempotent
+    // across re-approve and two-partner concurrency (upsert, never duplicate).
+    const expenseId = pendingId
+    const expense: Expense = {
+      id: expenseId,
+      categoryId,
+      amount: Math.abs(p.amount), // expenses store positive spend
+      date: p.date,
+      description: p.rawDescription,
+      createdAt: new Date().toISOString(),
+      ...(paymentMethodId ? { paymentMethodId } : {}),
+    }
+    const next = {
+      ...s.data,
+      expenses: [...s.data.expenses.filter((e) => e.id !== expenseId), expense],
+      pendingTransactions: s.data.pendingTransactions.map((x) =>
+        x.id === pendingId ? { ...x, status: 'approved' as const, resolvedRefs: [expenseId] } : x,
+      ),
+    }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+    checkBudgetAlerts(next, categoryId).catch(console.error)
+    return expenseId
+  },
+
+  skipPending(pendingId, reason) {
+    const s = get()
+    if (!s.data) return
+    const p = s.data.pendingTransactions.find((x) => x.id === pendingId)
+    if (!p || p.status === 'skipped') return
+    const next = {
+      ...s.data,
+      pendingTransactions: s.data.pendingTransactions.map((x) =>
+        x.id === pendingId
+          ? { ...x, status: 'skipped' as const, ...(reason ? { skipReason: reason } : {}) }
+          : x,
+      ),
+    }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
   },
 
   expensesForMonth(month) {
