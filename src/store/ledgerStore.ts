@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { LedgerData, Expense, PaymentMethod, LedgerSettings, Category, OnboardingPayload } from '../lib/types'
+import type { LedgerData, Expense, PaymentMethod, LedgerSettings, Category, OnboardingPayload, PendingTransaction } from '../lib/types'
 import { persistChange } from '../lib/sync'
 import { generateId } from '../lib/utils'
 import { checkBudgetAlerts } from '../lib/notifications'
@@ -23,6 +23,9 @@ interface LedgerStore {
   // Settings & onboarding
   updateSettings: (patch: Partial<LedgerSettings>) => void
   commitOnboarding: (payload: OnboardingPayload) => void
+
+  // Statement import (Phase 4) — pending rows never touch the budget
+  addPendingTransactions: (candidates: PendingTransaction[]) => number
 
   // Payment Methods
   addPaymentMethod: (name: string) => void
@@ -97,6 +100,20 @@ export const useLedgerStore = create<LedgerStore>((set, get) => ({
       persistChange(s.data, next).catch(console.error)
       return { data: next }
     })
+  },
+
+  addPendingTransactions(candidates) {
+    const s = get()
+    if (!s.data) return 0
+    // Dedup against everything already imported (pending/approved/skipped), so a
+    // re-imported or overlapping statement adds nothing it's already seen.
+    const existing = new Set(s.data.pendingTransactions.map((p) => p.dedupKey))
+    const fresh = candidates.filter((c) => !existing.has(c.dedupKey))
+    if (fresh.length === 0) return 0
+    const next = { ...s.data, pendingTransactions: [...s.data.pendingTransactions, ...fresh] }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+    return fresh.length
   },
 
   expensesForMonth(month) {

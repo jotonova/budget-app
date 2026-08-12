@@ -15,6 +15,7 @@ interface Props {
   onViewLedger: () => void
   onSettings: () => void
   onYearToDate: () => void
+  onImport: () => void
 }
 
 function insightForDay(totalIncome: number, totalSpent: number): string {
@@ -31,8 +32,9 @@ function insightForDay(totalIncome: number, totalSpent: number): string {
   return `All is in good order. The household accounts balance well for the ${dayOfMonth}${dayOfMonth === 1 ? 'st' : dayOfMonth === 2 ? 'nd' : dayOfMonth === 3 ? 'rd' : 'th'}.`
 }
 
-export default function Dashboard({ onAddExpense, onExpenseClick, onCategoryClick, onViewLedger, onSettings, onYearToDate }: Props) {
+export default function Dashboard({ onAddExpense, onExpenseClick, onCategoryClick, onViewLedger, onSettings, onYearToDate, onImport }: Props) {
   const data = useLedgerStore(s => s.data)
+  const pendingCount = data?.pendingTransactions.filter(p => p.status === 'pending').length ?? 0
   const totalSpentFn = useLedgerStore(s => s.totalSpent)
   const totalIncomeFn = useLedgerStore(s => s.totalIncome)
 
@@ -192,6 +194,9 @@ export default function Dashboard({ onAddExpense, onExpenseClick, onCategoryClic
         <div className="flex gap-4 flex-wrap">
           <ActionButton primary onClick={onAddExpense}>Add Expense</ActionButton>
           <ActionButton onClick={onViewLedger}>View Budget</ActionButton>
+          <ActionButton onClick={onImport}>
+            Review Inbox{pendingCount > 0 ? ` (${pendingCount})` : ''}
+          </ActionButton>
           <ActionButton onClick={onYearToDate}>Year to Date</ActionButton>
           <ActionButton onClick={onSettings}>Settings</ActionButton>
         </div>
