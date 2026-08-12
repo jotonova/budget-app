@@ -30,3 +30,15 @@ dist-ssr
 !.env.example
 # Public-safe cloud config baked into release builds (publishable key; RLS-protected)
 !.env.production
+
+# PRIVACY: real bank/card statements — NEVER commit (repo is public).
+# Drop sample statements under samples/ for local Stage 1 work only.
+/samples/
+*.qfx
+*.ofx
+*.qbo
+# Statement CSVs anywhere in the tree (our own fixtures use *.fixture.csv instead)
+statement*.csv
+*statement*.csv
+*-transactions.csv
+*_transactions.csv

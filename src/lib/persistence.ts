@@ -103,6 +103,18 @@ function maybeNormalizeThresholds(data: LedgerData): LedgerData {
   }
 }
 
+/** One-time migration: add the Phase 4 import arrays (pending transactions,
+ *  merchant rules, one-time income) for ledgers created before statement import. */
+function maybeAddImportTables(data: LedgerData): LedgerData {
+  if (data.pendingTransactions && data.merchantRules && data.oneTimeIncome) return data
+  return {
+    ...data,
+    pendingTransactions: data.pendingTransactions ?? [],
+    merchantRules: data.merchantRules ?? [],
+    oneTimeIncome: data.oneTimeIncome ?? [],
+  }
+}
+
 let _ledgerPath: string | null = null
 
 async function getLedgerPath(): Promise<string> {
@@ -126,7 +138,8 @@ export async function loadLedger(): Promise<LedgerData> {
     const withOnboarded = maybeAddOnboardedFlag(withPayments)
     const withAppTitle = maybeAddAppTitle(withOnboarded)
     const migrated = maybeNormalizeThresholds(withAppTitle)
-    const data = maybeRollover(migrated)
+    const withImport = maybeAddImportTables(migrated)
+    const data = maybeRollover(withImport)
     if (data !== loaded) await saveLedger(data)
     return data
   } catch {

@@ -32,5 +32,8 @@ export function buildSeedData(): LedgerData {
     },
     history: [],
     paymentMethods,
+    pendingTransactions: [],
+    merchantRules: [],
+    oneTimeIncome: [],
   }
 }

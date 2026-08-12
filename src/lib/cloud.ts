@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { versionKey, setVersion } from './cloudVersions'
-import type { LedgerData, LedgerSettings, Category, Expense, Group, IncomeSource, PaymentMethod } from './types'
+import type { LedgerData, LedgerSettings, Category, Expense, Group, IncomeSource, PaymentMethod, PendingTransaction, MerchantRule, OneTimeIncome } from './types'
 
 // ── Row → model mappers (snake_case Supabase rows → camelCase local model) ─────
 // Exported so the realtime layer applies inbound rows identically to the loader.
@@ -34,6 +34,29 @@ export function rowToExpense(r: any): Expense {
     id: r.id, categoryId: r.category_id ?? '', amount: Number(r.amount), date: r.date,
     description: r.description ?? '', createdAt: r.created_at,
     ...(r.payment_method_id ? { paymentMethodId: r.payment_method_id } : {}),
+  }
+}
+export function rowToPending(r: any): PendingTransaction {
+  return {
+    id: r.id, dedupKey: r.dedup_key, source: r.source,
+    date: r.date, merchant: r.merchant ?? '', rawDescription: r.raw_description ?? '',
+    amount: Number(r.amount), direction: r.direction, status: r.status,
+    createdAt: r.created_at,
+    ...(r.import_batch_id ? { importBatchId: r.import_batch_id } : {}),
+    ...(r.skip_reason ? { skipReason: r.skip_reason } : {}),
+    ...(r.resolved_refs ? { resolvedRefs: r.resolved_refs } : {}),
+  }
+}
+export function rowToMerchantRule(r: any): MerchantRule {
+  return {
+    id: r.id, match: r.match, categoryId: r.category_id ?? '', createdAt: r.created_at,
+    ...(r.payment_method_id ? { paymentMethodId: r.payment_method_id } : {}),
+  }
+}
+export function rowToOneTimeIncome(r: any): OneTimeIncome {
+  return {
+    id: r.id, amount: Number(r.amount), date: r.date, label: r.label ?? '', createdAt: r.created_at,
+    ...(r.note ? { note: r.note } : {}),
   }
 }
 export function rowToSettings(s: any): LedgerSettings {
@@ -83,6 +106,27 @@ function expenseRows(d: LedgerData, hid: string): Row[] {
     description: e.description, created_at: e.createdAt, deleted_at: null,
   }))
 }
+function pendingRows(d: LedgerData, hid: string): Row[] {
+  return d.pendingTransactions.map(p => ({
+    id: p.id, household_id: hid, dedup_key: p.dedupKey, source: p.source,
+    import_batch_id: p.importBatchId ?? null, date: p.date, merchant: p.merchant,
+    raw_description: p.rawDescription, amount: p.amount, direction: p.direction,
+    status: p.status, skip_reason: p.skipReason ?? null,
+    resolved_refs: p.resolvedRefs ?? null, created_at: p.createdAt, deleted_at: null,
+  }))
+}
+function merchantRuleRows(d: LedgerData, hid: string): Row[] {
+  return d.merchantRules.map(m => ({
+    id: m.id, household_id: hid, match: m.match, category_id: m.categoryId || null,
+    payment_method_id: m.paymentMethodId ?? null, created_at: m.createdAt, deleted_at: null,
+  }))
+}
+function oneTimeIncomeRows(d: LedgerData, hid: string): Row[] {
+  return d.oneTimeIncome.map(o => ({
+    id: o.id, household_id: hid, amount: o.amount, date: o.date, label: o.label,
+    note: o.note ?? null, created_at: o.createdAt, deleted_at: null,
+  }))
+}
 function settingsRow(d: LedgerData, hid: string): Row {
   const s = d.settings
   return {
@@ -129,12 +173,17 @@ export async function saveCloud(hid: string, prev: LedgerData | null, next: Ledg
   const base: LedgerData = prev ?? {
     version: 1, income: { sources: [] }, groups: [], categories: [],
     expenses: [], settings: next.settings, history: [], paymentMethods: [],
+    pendingTransactions: [], merchantRules: [], oneTimeIncome: [],
   }
   await syncTable('groups', groupRows(base, hid), groupRows(next, hid))
   await syncTable('categories', categoryRows(base, hid), categoryRows(next, hid))
   await syncTable('payment_methods', paymentRows(base, hid), paymentRows(next, hid))
   await syncTable('income_sources', incomeRows(base, hid), incomeRows(next, hid))
+  // categories/payment_methods first so merchant_rules FKs resolve.
+  await syncTable('merchant_rules', merchantRuleRows(base, hid), merchantRuleRows(next, hid))
   await syncTable('expenses', expenseRows(base, hid), expenseRows(next, hid))
+  await syncTable('pending_transactions', pendingRows(base, hid), pendingRows(next, hid))
+  await syncTable('one_time_income', oneTimeIncomeRows(base, hid), oneTimeIncomeRows(next, hid))
 
   const ps = prev ? settingsRow(prev, hid) : null
   const ns = settingsRow(next, hid)
@@ -149,15 +198,18 @@ export async function saveCloud(hid: string, prev: LedgerData | null, next: Ledg
 
 export async function loadCloud(hid: string): Promise<LedgerData> {
   if (!supabase) throw new Error('Cloud sync is not configured.')
-  const [inc, grp, cat, pm, exp, setRes] = await Promise.all([
+  const [inc, grp, cat, pm, exp, setRes, pend, mrules, oti] = await Promise.all([
     supabase.from('income_sources').select('*').eq('household_id', hid).is('deleted_at', null).order('sort_order'),
     supabase.from('groups').select('*').eq('household_id', hid).is('deleted_at', null).order('sort_order'),
     supabase.from('categories').select('*').eq('household_id', hid).is('deleted_at', null).order('sort_order'),
     supabase.from('payment_methods').select('*').eq('household_id', hid).is('deleted_at', null).order('sort_order'),
     supabase.from('expenses').select('*').eq('household_id', hid).is('deleted_at', null),
     supabase.from('household_settings').select('*').eq('household_id', hid).maybeSingle(),
+    supabase.from('pending_transactions').select('*').eq('household_id', hid).is('deleted_at', null),
+    supabase.from('merchant_rules').select('*').eq('household_id', hid).is('deleted_at', null),
+    supabase.from('one_time_income').select('*').eq('household_id', hid).is('deleted_at', null),
   ])
-  for (const r of [inc, grp, cat, pm, exp, setRes]) {
+  for (const r of [inc, grp, cat, pm, exp, setRes, pend, mrules, oti]) {
     if (r.error) throw new Error(r.error.message)
   }
 
@@ -168,6 +220,9 @@ export async function loadCloud(hid: string): Promise<LedgerData> {
   seed('categories', cat.data ?? [])
   seed('payment_methods', pm.data ?? [])
   seed('expenses', exp.data ?? [])
+  seed('pending_transactions', pend.data ?? [])
+  seed('merchant_rules', mrules.data ?? [])
+  seed('one_time_income', oti.data ?? [])
   if (setRes.data) setVersion(versionKey('household_settings', hid), (setRes.data as any).updated_at)
 
   return {
@@ -179,5 +234,8 @@ export async function loadCloud(hid: string): Promise<LedgerData> {
     settings: rowToSettings(setRes.data),
     history: [],
     paymentMethods: (pm.data ?? []).map(rowToPayment),
+    pendingTransactions: (pend.data ?? []).map(rowToPending),
+    merchantRules: (mrules.data ?? []).map(rowToMerchantRule),
+    oneTimeIncome: (oti.data ?? []).map(rowToOneTimeIncome),
   }
 }
