@@ -96,7 +96,7 @@ export default function App() {
 
   // ── ExpenseModal callbacks ─────────────────────────────────────────────────
 
-  function handleExpenseSave(id: string, updates: { amount: number; date: string; description: string; paymentMethodId?: string }) {
+  function handleExpenseSave(id: string, updates: { amount: number; date: string; description: string; paymentMethodId?: string; categoryId: string }) {
     updateExpense(id, updates)
     setEditingExpense(null)
   }

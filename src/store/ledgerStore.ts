@@ -18,7 +18,7 @@ interface LedgerStore {
   addExpense: (expense: Omit<Expense, 'id' | 'createdAt'>) => string
   deleteExpense: (id: string) => void
   restoreExpense: (expense: Expense) => void
-  updateExpense: (id: string, updates: Partial<Pick<Expense, 'amount' | 'date' | 'description' | 'paymentMethodId'>>) => void
+  updateExpense: (id: string, updates: Partial<Pick<Expense, 'amount' | 'date' | 'description' | 'paymentMethodId' | 'categoryId'>>) => void
 
   // Settings & onboarding
   updateSettings: (patch: Partial<LedgerSettings>) => void
