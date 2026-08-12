@@ -37,11 +37,13 @@ export default function Dashboard({ onAddExpense, onExpenseClick, onCategoryClic
   const pendingCount = data?.pendingTransactions.filter(p => p.status === 'pending').length ?? 0
   const totalSpentFn = useLedgerStore(s => s.totalSpent)
   const totalIncomeFn = useLedgerStore(s => s.totalIncome)
+  const oneTimeForMonthFn = useLedgerStore(s => s.oneTimeIncomeForMonth)
 
   const month = getCurrentMonth()
   const totalIncome = totalIncomeFn()
+  const oneTimeThisMonth = oneTimeForMonthFn(month)
   const totalSpent = totalSpentFn(month)
-  const available = totalIncome - totalSpent
+  const available = totalIncome + oneTimeThisMonth - totalSpent
 
   const essentialGroups = useMemo(
     () => data?.groups.filter(g => g.essential).sort((a, b) => a.order - b.order) ?? [],
@@ -92,6 +94,9 @@ export default function Dashboard({ onAddExpense, onExpenseClick, onCategoryClic
           </p>
           <p style={{ fontFamily: 'var(--font-body)', fontSize: 16, color: 'rgba(244,237,224,0.65)', marginTop: 8 }}>
             of {formatCurrency(totalIncome)} monthly income
+            {oneTimeThisMonth > 0 && (
+              <span style={{ color: 'var(--color-gold)' }}> · +{formatCurrency(oneTimeThisMonth)} one-time</span>
+            )}
           </p>
           {/* Mini income breakdown */}
           <div className="flex justify-center gap-8 mt-5" style={{ borderTop: '1px solid rgba(201,184,138,0.3)', paddingTop: 16 }}>

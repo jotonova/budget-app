@@ -1,7 +1,7 @@
 import { create } from 'zustand'
-import type { LedgerData, Expense, PaymentMethod, LedgerSettings, Category, OnboardingPayload, PendingTransaction } from '../lib/types'
+import type { LedgerData, Expense, PaymentMethod, LedgerSettings, Category, OnboardingPayload, PendingTransaction, OneTimeIncome, MerchantRule } from '../lib/types'
 import { persistChange } from '../lib/sync'
-import { generateId } from '../lib/utils'
+import { generateId, deterministicId } from '../lib/utils'
 import { checkBudgetAlerts } from '../lib/notifications'
 
 // ── State shape ───────────────────────────────────────────────────────────────
@@ -33,6 +33,20 @@ interface LedgerStore {
   /** Skip a pending row (optionally with a reason). It leaves the review list but
    *  stays recorded so its dedupKey blocks re-imports. */
   skipPending: (pendingId: string, reason?: string) => void
+  /** Approve a pending row as a SPLIT across categories (amounts should sum to the
+   *  row total). Creates one expense per part; ids derived from the pending id. */
+  approveSplit: (pendingId: string, parts: { categoryId: string; amount: number }[], paymentMethodId?: string) => string[] | null
+  /** Approve a credit (money-in) row as a REFUND credited to a category — a
+   *  negative-amount expense that reduces that category's spending. */
+  approveRefund: (pendingId: string, categoryId: string, paymentMethodId?: string) => string | null
+  /** Approve a credit row as ONE-TIME INCOME (windfall) with a label. */
+  approveOneTimeIncome: (pendingId: string, label: string, note?: string) => string | null
+  /** Remember merchant → category (per household). Pre-fills future imports; upsert by match. */
+  addMerchantRule: (match: string, categoryId: string, paymentMethodId?: string) => void
+
+  // One-time income surfacing (additive; recurring income untouched)
+  oneTimeIncomeForMonth: (month: string) => number
+  oneTimeIncomeForYear: (year: string) => number
 
   // Payment Methods
   addPaymentMethod: (name: string) => void
@@ -168,6 +182,114 @@ export const useLedgerStore = create<LedgerStore>((set, get) => ({
     }
     set({ data: next })
     persistChange(s.data, next).catch(console.error)
+  },
+
+  approveSplit(pendingId, parts, paymentMethodId) {
+    const s = get()
+    if (!s.data) return null
+    const p = s.data.pendingTransactions.find((x) => x.id === pendingId)
+    if (!p || p.status === 'approved') return null
+    const valid = parts.filter((pt) => pt.categoryId && pt.amount > 0)
+    if (valid.length === 0) return null
+    const createdAt = new Date().toISOString()
+    const ids: string[] = []
+    const newExpenses: Expense[] = valid.map((pt, i) => {
+      const id = deterministicId(`${pendingId}:${i}`) // deterministic → idempotent
+      ids.push(id)
+      return {
+        id, categoryId: pt.categoryId, amount: Math.abs(pt.amount), date: p.date,
+        description: p.rawDescription, createdAt,
+        ...(paymentMethodId ? { paymentMethodId } : {}),
+      }
+    })
+    const newIds = new Set(ids)
+    const next = {
+      ...s.data,
+      expenses: [...s.data.expenses.filter((e) => !newIds.has(e.id)), ...newExpenses],
+      pendingTransactions: s.data.pendingTransactions.map((x) =>
+        x.id === pendingId ? { ...x, status: 'approved' as const, resolvedRefs: ids } : x,
+      ),
+    }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+    for (const pt of valid) checkBudgetAlerts(next, pt.categoryId).catch(console.error)
+    return ids
+  },
+
+  approveRefund(pendingId, categoryId, paymentMethodId) {
+    const s = get()
+    if (!s.data) return null
+    const p = s.data.pendingTransactions.find((x) => x.id === pendingId)
+    if (!p || p.status === 'approved') return null
+    const expenseId = pendingId
+    // Negative-amount expense: reduces the category's spending, keeping the budget accurate.
+    const expense: Expense = {
+      id: expenseId, categoryId, amount: -Math.abs(p.amount), date: p.date,
+      description: `Refund: ${p.rawDescription}`.slice(0, 200), createdAt: new Date().toISOString(),
+      ...(paymentMethodId ? { paymentMethodId } : {}),
+    }
+    const next = {
+      ...s.data,
+      expenses: [...s.data.expenses.filter((e) => e.id !== expenseId), expense],
+      pendingTransactions: s.data.pendingTransactions.map((x) =>
+        x.id === pendingId ? { ...x, status: 'approved' as const, resolvedRefs: [expenseId] } : x,
+      ),
+    }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+    return expenseId
+  },
+
+  approveOneTimeIncome(pendingId, label, note) {
+    const s = get()
+    if (!s.data) return null
+    const p = s.data.pendingTransactions.find((x) => x.id === pendingId)
+    if (!p || p.status === 'approved') return null
+    const incomeId = pendingId // deterministic uuid → idempotent
+    const entry: OneTimeIncome = {
+      id: incomeId, amount: Math.abs(p.amount), date: p.date,
+      label: label.trim() || 'One-time income', createdAt: new Date().toISOString(),
+      ...(note ? { note } : {}),
+    }
+    const next = {
+      ...s.data,
+      oneTimeIncome: [...s.data.oneTimeIncome.filter((o) => o.id !== incomeId), entry],
+      pendingTransactions: s.data.pendingTransactions.map((x) =>
+        x.id === pendingId ? { ...x, status: 'approved' as const, resolvedRefs: [incomeId] } : x,
+      ),
+    }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+    return incomeId
+  },
+
+  addMerchantRule(match, categoryId, paymentMethodId) {
+    const s = get()
+    if (!s.data || !match) return
+    const existing = s.data.merchantRules.find((r) => r.match === match)
+    const rule: MerchantRule = {
+      id: existing?.id ?? generateId(), match, categoryId,
+      createdAt: existing?.createdAt ?? new Date().toISOString(),
+      ...(paymentMethodId ? { paymentMethodId } : {}),
+    }
+    const next = {
+      ...s.data,
+      merchantRules: [...s.data.merchantRules.filter((r) => r.match !== match), rule],
+    }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+  },
+
+  oneTimeIncomeForMonth(month) {
+    const d = get().data
+    if (!d) return 0
+    return d.oneTimeIncome.filter((o) => o.date.startsWith(month)).reduce((sum, o) => sum + o.amount, 0)
+  },
+
+  oneTimeIncomeForYear(year) {
+    const d = get().data
+    if (!d) return 0
+    return d.oneTimeIncome.filter((o) => o.date.startsWith(year)).reduce((sum, o) => sum + o.amount, 0)
   },
 
   expensesForMonth(month) {
