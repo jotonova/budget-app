@@ -99,19 +99,19 @@ export default function ImportReview({ onBack }: Props) {
   }
 
   /** Approve as a normal expense, then offer to remember merchant → category. */
-  function handleApprove(p: PendingTransaction, categoryId: string, paymentMethodId?: string) {
-    if (approvePending(p.id, categoryId, paymentMethodId)) {
+  function handleApprove(p: PendingTransaction, categoryId: string, paymentMethodId?: string, note?: string) {
+    if (approvePending(p.id, categoryId, paymentMethodId, note)) {
       setTally(t => ({ ...t, approved: t.approved + 1 }))
       if (p.merchant && !merchantRules.some(r => r.match === p.merchant)) {
         setRemember({ merchant: p.merchant, categoryId })
       }
     }
   }
-  function handleSplit(id: string, parts: { categoryId: string; amount: number }[], paymentMethodId?: string) {
+  function handleSplit(id: string, parts: { categoryId: string; amount: number; note?: string }[], paymentMethodId?: string) {
     if (approveSplit(id, parts, paymentMethodId)) setTally(t => ({ ...t, approved: t.approved + 1 }))
   }
-  function handleRefund(id: string, categoryId: string, paymentMethodId?: string) {
-    if (approveRefund(id, categoryId, paymentMethodId)) setTally(t => ({ ...t, approved: t.approved + 1 }))
+  function handleRefund(id: string, categoryId: string, paymentMethodId?: string, note?: string) {
+    if (approveRefund(id, categoryId, paymentMethodId, note)) setTally(t => ({ ...t, approved: t.approved + 1 }))
   }
   function handleIncome(id: string, label: string, note?: string) {
     if (approveOneTimeIncome(id, label, note)) setTally(t => ({ ...t, approved: t.approved + 1 }))
@@ -266,9 +266,9 @@ function PendingRow({
   match?: ManualMatch
   categoryName: (id: string) => string
   isMobile: boolean
-  onApprove: (p: PendingTransaction, categoryId: string, paymentMethodId?: string) => void
-  onSplit: (id: string, parts: { categoryId: string; amount: number }[], paymentMethodId?: string) => void
-  onRefund: (id: string, categoryId: string, paymentMethodId?: string) => void
+  onApprove: (p: PendingTransaction, categoryId: string, paymentMethodId?: string, note?: string) => void
+  onSplit: (id: string, parts: { categoryId: string; amount: number; note?: string }[], paymentMethodId?: string) => void
+  onRefund: (id: string, categoryId: string, paymentMethodId?: string, note?: string) => void
   onIncome: (id: string, label: string, note?: string) => void
   onSkip: (id: string, reason?: string) => void
 }) {
@@ -281,8 +281,8 @@ function PendingRow({
   const [pmId, setPmId] = useState('')
   // Debit sub-mode: expense (default) | split | skip
   const [debitMode, setDebitMode] = useState<'expense' | 'split' | 'skip'>('expense')
-  // Split parts
-  const [parts, setParts] = useState<{ categoryId: string; amount: string }[]>([{ categoryId: suggestedCategoryId ?? '', amount: total.toFixed(2) }])
+  // Split parts (each line can carry its own note)
+  const [parts, setParts] = useState<{ categoryId: string; amount: string; note?: string }[]>([{ categoryId: suggestedCategoryId ?? '', amount: total.toFixed(2), note: '' }])
   // Credit destination: null | refund | income | skip
   const [dest, setDest] = useState<'refund' | 'income' | 'skip' | null>(null)
   const [label, setLabel] = useState('')
@@ -345,7 +345,8 @@ function PendingRow({
               {paymentMethods.length > 0 && (
                 <PaymentSelect paymentMethods={paymentMethods} value={pmId} onChange={setPmId} isMobile={isMobile} />
               )}
-              <RowButton primary disabled={!catId} onClick={() => onApprove(p, catId, pmId || undefined)}>Approve</RowButton>
+              <input value={note} placeholder="Note (optional)" onChange={e => setNote(e.target.value)} style={{ ...selectStyle(isMobile), minWidth: 150 }} />
+              <RowButton primary disabled={!catId} onClick={() => onApprove(p, catId, pmId || undefined, note || undefined)}>Approve</RowButton>
               <RowButton onClick={() => setDebitMode('split')}>Split…</RowButton>
               <RowButton onClick={() => setDebitMode('skip')}>Skip…</RowButton>
             </div>
@@ -362,13 +363,18 @@ function PendingRow({
                     onChange={e => setParts(ps => ps.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}
                     style={{ ...selectStyle(isMobile), width: 100 }}
                   />
+                  <input
+                    value={part.note ?? ''} placeholder="Note (optional)"
+                    onChange={e => setParts(ps => ps.map((x, j) => j === i ? { ...x, note: e.target.value } : x))}
+                    style={{ ...selectStyle(isMobile), minWidth: 130 }}
+                  />
                   {parts.length > 1 && (
                     <RowButton onClick={() => setParts(ps => ps.filter((_, j) => j !== i))}>✕</RowButton>
                   )}
                 </div>
               ))}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-                <RowButton onClick={() => setParts(ps => [...ps, { categoryId: '', amount: Math.max(0, remainder).toFixed(2) }])}>+ Add line</RowButton>
+                <RowButton onClick={() => setParts(ps => [...ps, { categoryId: '', amount: Math.max(0, remainder).toFixed(2), note: '' }])}>+ Add line</RowButton>
                 <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: Math.abs(remainder) < 0.005 ? '#1e7d43' : '#8a5a2b' }}>
                   {Math.abs(remainder) < 0.005 ? '✓ balanced' : `remainder ${formatCurrency(remainder)}`} of {formatCurrency(total)}
                 </span>
@@ -378,7 +384,7 @@ function PendingRow({
               )}
               <div style={{ display: 'flex', gap: 8 }}>
                 <RowButton primary disabled={!splitValid}
-                  onClick={() => onSplit(p.id, parts.map(x => ({ categoryId: x.categoryId, amount: parseFloat(x.amount) || 0 })), pmId || undefined)}>
+                  onClick={() => onSplit(p.id, parts.map(x => ({ categoryId: x.categoryId, amount: parseFloat(x.amount) || 0, note: x.note?.trim() || undefined })), pmId || undefined)}>
                   Approve split
                 </RowButton>
                 <RowButton onClick={() => setDebitMode('expense')}>Cancel</RowButton>
@@ -405,8 +411,9 @@ function PendingRow({
           {dest === 'refund' && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
               <CategorySelect groups={groups} categories={categories} value={catId} onChange={setCatId} isMobile={isMobile} />
+              <input value={note} placeholder="Note (optional)" onChange={e => setNote(e.target.value)} style={{ ...selectStyle(isMobile), minWidth: 150 }} />
               <span style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--color-ink-soft)' }}>reduces that category's spending</span>
-              <RowButton primary disabled={!catId} onClick={() => onRefund(p.id, catId, pmId || undefined)}>Approve refund</RowButton>
+              <RowButton primary disabled={!catId} onClick={() => onRefund(p.id, catId, pmId || undefined, note || undefined)}>Approve refund</RowButton>
             </div>
           )}
 

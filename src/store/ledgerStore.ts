@@ -28,17 +28,20 @@ interface LedgerStore {
   addPendingTransactions: (candidates: PendingTransaction[]) => number
   /** Approve a pending row into a real expense. Idempotent: the expense id is
    *  derived from the pending-row id, so re-approving / concurrent approval by
-   *  both partners converges to ONE expense. Returns the expense id. */
-  approvePending: (pendingId: string, categoryId: string, paymentMethodId?: string) => string | null
+   *  both partners converges to ONE expense. Optional `note` overrides the
+   *  expense description (raw bank text stays on the pending row). Returns the id. */
+  approvePending: (pendingId: string, categoryId: string, paymentMethodId?: string, note?: string) => string | null
   /** Skip a pending row (optionally with a reason). It leaves the review list but
    *  stays recorded so its dedupKey blocks re-imports. */
   skipPending: (pendingId: string, reason?: string) => void
   /** Approve a pending row as a SPLIT across categories (amounts should sum to the
-   *  row total). Creates one expense per part; ids derived from the pending id. */
-  approveSplit: (pendingId: string, parts: { categoryId: string; amount: number }[], paymentMethodId?: string) => string[] | null
+   *  row total). Creates one expense per part; ids derived from the pending id.
+   *  Each part may carry an optional `note` → that line's expense description. */
+  approveSplit: (pendingId: string, parts: { categoryId: string; amount: number; note?: string }[], paymentMethodId?: string) => string[] | null
   /** Approve a credit (money-in) row as a REFUND credited to a category — a
-   *  negative-amount expense that reduces that category's spending. */
-  approveRefund: (pendingId: string, categoryId: string, paymentMethodId?: string) => string | null
+   *  negative-amount expense that reduces that category's spending. Optional
+   *  `note` overrides the description (default "Refund: <raw>"). */
+  approveRefund: (pendingId: string, categoryId: string, paymentMethodId?: string, note?: string) => string | null
   /** Approve a credit row as ONE-TIME INCOME (windfall) with a label. */
   approveOneTimeIncome: (pendingId: string, label: string, note?: string) => string | null
   /** Remember merchant → category (per household). Pre-fills future imports; upsert by match. */
@@ -137,7 +140,7 @@ export const useLedgerStore = create<LedgerStore>((set, get) => ({
     return fresh.length
   },
 
-  approvePending(pendingId, categoryId, paymentMethodId) {
+  approvePending(pendingId, categoryId, paymentMethodId, note) {
     const s = get()
     if (!s.data) return null
     const p = s.data.pendingTransactions.find((x) => x.id === pendingId)
@@ -150,7 +153,7 @@ export const useLedgerStore = create<LedgerStore>((set, get) => ({
       categoryId,
       amount: Math.abs(p.amount), // expenses store positive spend
       date: p.date,
-      description: p.rawDescription,
+      description: note?.trim() || p.rawDescription,
       createdAt: new Date().toISOString(),
       ...(paymentMethodId ? { paymentMethodId } : {}),
     }
@@ -198,7 +201,7 @@ export const useLedgerStore = create<LedgerStore>((set, get) => ({
       ids.push(id)
       return {
         id, categoryId: pt.categoryId, amount: Math.abs(pt.amount), date: p.date,
-        description: p.rawDescription, createdAt,
+        description: pt.note?.trim() || p.rawDescription, createdAt,
         ...(paymentMethodId ? { paymentMethodId } : {}),
       }
     })
@@ -216,7 +219,7 @@ export const useLedgerStore = create<LedgerStore>((set, get) => ({
     return ids
   },
 
-  approveRefund(pendingId, categoryId, paymentMethodId) {
+  approveRefund(pendingId, categoryId, paymentMethodId, note) {
     const s = get()
     if (!s.data) return null
     const p = s.data.pendingTransactions.find((x) => x.id === pendingId)
@@ -225,7 +228,7 @@ export const useLedgerStore = create<LedgerStore>((set, get) => ({
     // Negative-amount expense: reduces the category's spending, keeping the budget accurate.
     const expense: Expense = {
       id: expenseId, categoryId, amount: -Math.abs(p.amount), date: p.date,
-      description: `Refund: ${p.rawDescription}`.slice(0, 200), createdAt: new Date().toISOString(),
+      description: (note?.trim() || `Refund: ${p.rawDescription}`).slice(0, 200), createdAt: new Date().toISOString(),
       ...(paymentMethodId ? { paymentMethodId } : {}),
     }
     const next = {
