@@ -43,7 +43,9 @@ export default function LedgerView({ onBack, onExpenseClick }: Props) {
   const [showCatFilter, setShowCatFilter] = useState(false)
   const [exportError, setExportError] = useState('')
 
-  const allExpenses = useMemo(() => expensesForMonth(selectedMonth), [expensesForMonth, selectedMonth])
+  // Include `data`: expensesForMonth is a stable action ref, so without it this
+  // memo went stale after an edit and reopening showed the pre-edit value.
+  const allExpenses = useMemo(() => expensesForMonth(selectedMonth), [data, expensesForMonth, selectedMonth])
 
   const categoryMap = useMemo(() => {
     const m = new Map<string, string>()
