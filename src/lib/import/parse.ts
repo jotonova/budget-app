@@ -37,6 +37,12 @@ export function readHeaders(text: string): string[] {
   return res.meta.fields ?? []
 }
 
+/** Parse into headers + row objects — used by the smart-guess mapper for preview. */
+export function parseCsvRows(text: string): { headers: string[]; rows: Record<string, string>[] } {
+  const res = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: 'greedy', transformHeader: h => h.trim() })
+  return { headers: res.meta.fields ?? [], rows: res.data }
+}
+
 /** Parse raw CSV text into normalized rows using a profile. Pure — no store
  *  writes, no side effects. */
 export function parseStatement(text: string, profile: ImportProfile): ParseResult {

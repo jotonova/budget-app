@@ -29,6 +29,7 @@ export function buildSeedData(): LedgerData {
       appTitle: 'My Budget',
       onboarded: false,
       trackingStartDate: today(),
+      importReminderDays: 7,
     },
     history: [],
     paymentMethods,

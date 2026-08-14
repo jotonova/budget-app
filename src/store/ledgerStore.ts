@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { LedgerData, Expense, PaymentMethod, LedgerSettings, Category, OnboardingPayload, PendingTransaction, OneTimeIncome, MerchantRule } from '../lib/types'
+import type { ImportProfile } from '../lib/import/profiles'
 import { persistChange } from '../lib/sync'
 import { generateId, deterministicId } from '../lib/utils'
 import { checkBudgetAlerts } from '../lib/notifications'
@@ -55,6 +56,12 @@ interface LedgerStore {
   // One-time income surfacing (additive; recurring income untouched)
   oneTimeIncomeForMonth: (month: string) => number
   oneTimeIncomeForYear: (year: string) => number
+
+  // Import profiles + reminder bookkeeping (stored in settings, synced)
+  /** Save/replace a per-bank import profile (upsert by header signature). */
+  addImportProfile: (profile: ImportProfile) => void
+  /** Stamp settings.lastImportAt = now (drives the reminder nudge). */
+  recordImportNow: () => void
 
   // Payment Methods
   addPaymentMethod: (name: string) => void
@@ -319,6 +326,24 @@ export const useLedgerStore = create<LedgerStore>((set, get) => ({
     const d = get().data
     if (!d) return 0
     return d.oneTimeIncome.filter((o) => o.date.startsWith(year)).reduce((sum, o) => sum + o.amount, 0)
+  },
+
+  addImportProfile(profile) {
+    const s = get()
+    if (!s.data) return
+    const existing = s.data.settings.importProfiles ?? []
+    const merged = [...existing.filter((p) => p.headerSignature !== profile.headerSignature), profile]
+    const next = { ...s.data, settings: { ...s.data.settings, importProfiles: merged } }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+  },
+
+  recordImportNow() {
+    const s = get()
+    if (!s.data) return
+    const next = { ...s.data, settings: { ...s.data.settings, lastImportAt: new Date().toISOString() } }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
   },
 
   expensesForMonth(month) {

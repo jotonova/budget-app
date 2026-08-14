@@ -4,9 +4,11 @@ import { useIsMobile } from '../lib/useIsMobile'
 import { useLedgerStore } from '../store/ledgerStore'
 import { formatCurrency, getCurrentMonth } from '../lib/utils'
 import { pickStatementFile } from '../lib/import/pickFile'
-import { readHeaders, parseStatement, toPendingTransactions } from '../lib/import/parse'
-import { detectProfile } from '../lib/import/profiles'
+import { parseCsvRows, parseStatement, toPendingTransactions } from '../lib/import/parse'
+import { detectProfile, type ImportProfile } from '../lib/import/profiles'
+import { guessMapping, type GuessResult } from '../lib/import/guess'
 import { findManualMatch, type ManualMatch } from '../lib/import/duplicates'
+import ImportMapper from './ImportMapper'
 import type { PendingTransaction, Category, Group, PaymentMethod, MerchantRule } from '../lib/types'
 
 interface Props { onBack: () => void }
@@ -35,6 +37,8 @@ export default function ImportReview({ onBack }: Props) {
   const skipPending = useLedgerStore(s => s.skipPending)
   const bulkSkipPending = useLedgerStore(s => s.bulkSkipPending)
   const addMerchantRule = useLedgerStore(s => s.addMerchantRule)
+  const addImportProfile = useLedgerStore(s => s.addImportProfile)
+  const recordImportNow = useLedgerStore(s => s.recordImportNow)
   const isMobile = useIsMobile()
 
   const [busy, setBusy] = useState(false)
@@ -44,6 +48,7 @@ export default function ImportReview({ onBack }: Props) {
   const [remember, setRemember] = useState<{ merchant: string; categoryId: string } | null>(null)
   const [beforeDate, setBeforeDate] = useState(`${getCurrentMonth()}-01`)
   const [bulkConfirm, setBulkConfirm] = useState<{ ids: string[]; label: string } | null>(null)
+  const [mapper, setMapper] = useState<{ fileName: string; text: string; headers: string[]; rows: Record<string, string>[]; guess: GuessResult } | null>(null)
 
   const pending = (data?.pendingTransactions ?? [])
     .filter(p => p.status === 'pending')
@@ -73,32 +78,45 @@ export default function ImportReview({ onBack }: Props) {
   }, [allPending, expenses])
   const flaggedCount = matches.size
 
+  /** Parse a file with a known profile, dedup, and add pending rows. */
+  function runImport(text: string, fileName: string, profile: ImportProfile) {
+    const result = parseStatement(text, profile)
+    const existing = new Set((data?.pendingTransactions ?? []).map(p => p.dedupKey))
+    const candidates = toPendingTransactions(result.rows, existing, new Date().toISOString())
+    const added = addPendingTransactions(candidates)
+    recordImportNow()
+    setSummary({
+      file: fileName, profile: profile.displayName,
+      total: result.counts.total, parsed: result.counts.parsed,
+      debit: result.counts.debit, credit: result.counts.credit, failed: result.counts.failed,
+      added, duplicates: result.counts.parsed - added,
+    })
+  }
+
   async function handleImport() {
     setBusy(true); setErr(null); setSummary(null)
     try {
       const picked = await pickStatementFile()
       if (!picked) return
-      const headers = readHeaders(picked.text)
-      const profile = detectProfile(headers)
-      if (!profile) {
-        setErr(`This file's columns (${headers.join(', ') || 'none'}) aren't a recognized layout yet. PNC's "Account Activity" export is supported now; a custom column-mapping step is coming in a later stage.`)
-        return
+      const { headers, rows } = parseCsvRows(picked.text)
+      const profile = detectProfile(headers, data?.settings.importProfiles ?? [])
+      if (profile) {
+        runImport(picked.text, picked.name, profile)     // recognized bank → straight to review
+      } else {
+        // Unknown bank → smart-guess the columns, then confirm.
+        setMapper({ fileName: picked.name, text: picked.text, headers, rows, guess: guessMapping(headers, rows) })
       }
-      const result = parseStatement(picked.text, profile)
-      const existing = new Set((data?.pendingTransactions ?? []).map(p => p.dedupKey))
-      const candidates = toPendingTransactions(result.rows, existing, new Date().toISOString())
-      const added = addPendingTransactions(candidates)
-      setSummary({
-        file: picked.name, profile: profile.displayName,
-        total: result.counts.total, parsed: result.counts.parsed,
-        debit: result.counts.debit, credit: result.counts.credit, failed: result.counts.failed,
-        added, duplicates: result.counts.parsed - added,
-      })
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
     } finally {
       setBusy(false)
     }
+  }
+
+  function handleMapperConfirm(profile: ImportProfile) {
+    addImportProfile(profile)                            // remember this bank
+    if (mapper) runImport(mapper.text, mapper.fileName, profile)
+    setMapper(null)
   }
 
   /** Approve as a normal expense, then offer to remember merchant → category. */
@@ -135,6 +153,17 @@ export default function ImportReview({ onBack }: Props) {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: 'var(--color-parchment)' }}>
+      {mapper && (
+        <ImportMapper
+          fileName={mapper.fileName}
+          headers={mapper.headers}
+          rows={mapper.rows}
+          guess={mapper.guess}
+          onConfirm={handleMapperConfirm}
+          onCancel={() => setMapper(null)}
+        />
+      )}
+
       <SceneHeader title="Review Inbox" subtitle="Categorize each line, then approve" />
 
       <div style={{ maxWidth: 760, margin: '0 auto', padding: isMobile ? '20px 16px 96px' : '32px 24px 64px' }}>

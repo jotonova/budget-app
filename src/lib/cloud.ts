@@ -68,6 +68,9 @@ export function rowToSettings(s: any): LedgerSettings {
     onboarded: true, // cloud households are already set up; `onboarded` is local-only
     budgetName: s?.budget_name ?? undefined,
     trackingStartDate: s?.tracking_start_date ?? undefined,
+    importProfiles: s?.import_profiles ?? undefined,
+    importReminderDays: s?.import_reminder_days ?? 7,
+    lastImportAt: s?.last_import_at ?? undefined,
   }
 }
 
@@ -137,6 +140,9 @@ function settingsRow(d: LedgerData, hid: string): Row {
     app_title: s.appTitle,
     budget_name: s.budgetName ?? null,
     tracking_start_date: s.trackingStartDate ?? null,
+    import_profiles: s.importProfiles ?? null,
+    import_reminder_days: s.importReminderDays ?? 7,
+    last_import_at: s.lastImportAt ?? null,
   }
 }
 

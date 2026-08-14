@@ -1,3 +1,5 @@
+import type { ImportProfile } from './import/profiles'
+
 // ── Income ────────────────────────────────────────────────────────────────────
 
 export interface IncomeSource {
@@ -70,6 +72,12 @@ export interface LedgerSettings {
   lastRolloverMonth?: string
   /** The first month (YYYY-MM-DD) from which expense tracking began — YTD excludes earlier months */
   trackingStartDate?: string
+  /** Saved per-bank import column mappings (synced across the household). */
+  importProfiles?: ImportProfile[]
+  /** Import-reminder interval in days; 0 = off. Default 7. */
+  importReminderDays?: number
+  /** ISO timestamp of the most recent statement import (drives the reminder nudge). */
+  lastImportAt?: string
 }
 
 // ── Onboarding ────────────────────────────────────────────────────────────────

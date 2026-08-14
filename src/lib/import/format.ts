@@ -24,9 +24,9 @@ export function parseAmount(raw: string | undefined | null): number {
 }
 
 /** Extract an ISO YYYY-MM-DD date from a cell that may carry a prefix such as
- *  "Tuesday - 08/11/2026". Assumes US MM/DD/YYYY (PNC); also accepts a bare ISO
- *  date. Returns null if no date is found. */
-export function extractStatementDate(raw: string | undefined | null, _format = 'MM/DD/YYYY'): string | null {
+ *  "Tuesday - 08/11/2026". Honors the slash-date order via `format` (default US
+ *  MM/DD/YYYY, as PNC uses); also accepts a bare ISO date. Null if none found. */
+export function extractStatementDate(raw: string | undefined | null, format = 'MM/DD/YYYY'): string | null {
   if (raw == null) return null
   const s = String(raw)
 
@@ -34,11 +34,12 @@ export function extractStatementDate(raw: string | undefined | null, _format = '
   const iso = s.match(/(\d{4})-(\d{2})-(\d{2})/)
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`
 
-  // US MM/DD/YYYY (or M/D/YYYY) anywhere in the cell (ignores weekday prefix).
+  // Slash date M/D/YYYY anywhere in the cell (ignores any weekday prefix).
   const md = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)
   if (md) {
-    const mm = md[1]!.padStart(2, '0')
-    const dd = md[2]!.padStart(2, '0')
+    const dayFirst = format.toUpperCase().startsWith('DD')
+    const mm = (dayFirst ? md[2]! : md[1]!).padStart(2, '0')
+    const dd = (dayFirst ? md[1]! : md[2]!).padStart(2, '0')
     return `${md[3]}-${mm}-${dd}`
   }
   return null
