@@ -9,6 +9,7 @@ import { detectProfile, type ImportProfile } from '../lib/import/profiles'
 import { guessMapping, type GuessResult } from '../lib/import/guess'
 import { findManualMatch, type ManualMatch } from '../lib/import/duplicates'
 import ImportMapper from './ImportMapper'
+import ImportWizard from './ImportWizard'
 import type { PendingTransaction, Category, Group, PaymentMethod, MerchantRule } from '../lib/types'
 
 interface Props { onBack: () => void }
@@ -49,6 +50,7 @@ export default function ImportReview({ onBack }: Props) {
   const [beforeDate, setBeforeDate] = useState(`${getCurrentMonth()}-01`)
   const [bulkConfirm, setBulkConfirm] = useState<{ ids: string[]; label: string } | null>(null)
   const [mapper, setMapper] = useState<{ fileName: string; text: string; headers: string[]; rows: Record<string, string>[]; guess: GuessResult } | null>(null)
+  const [wizard, setWizard] = useState(false)
 
   const pending = (data?.pendingTransactions ?? [])
     .filter(p => p.status === 'pending')
@@ -153,6 +155,13 @@ export default function ImportReview({ onBack }: Props) {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: 'var(--color-parchment)' }}>
+      {wizard && (
+        <ImportWizard
+          onChooseFile={() => { setWizard(false); handleImport() }}
+          onCancel={() => setWizard(false)}
+        />
+      )}
+
       {mapper && (
         <ImportMapper
           fileName={mapper.fileName}
@@ -184,14 +193,11 @@ export default function ImportReview({ onBack }: Props) {
           <p style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 600, color: 'var(--color-navy)', marginBottom: 6 }}>
             Import a statement
           </p>
-          <p style={{ fontFamily: 'var(--font-body)', fontSize: 15, color: 'var(--color-ink-soft)', lineHeight: 1.6, marginBottom: 8 }}>
-            Choose a CSV exported from your bank. Nothing is added to your budget — every row lands here for you (and your partner) to categorize and approve.
-          </p>
-          <p style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--color-ink-soft)', lineHeight: 1.6, marginBottom: 16 }}>
-            <strong>PNC:</strong> Online Banking → Account Activity → Download → CSV. PNC exports up to 90 days at a time; a weekly pull is plenty, and re-importing an overlapping range is safe (duplicates are skipped).
+          <p style={{ fontFamily: 'var(--font-body)', fontSize: 15, color: 'var(--color-ink-soft)', lineHeight: 1.6, marginBottom: 16 }}>
+            We'll show you how to download the file, then read it for you. Nothing is added to your budget — every row lands here for you (and your partner) to categorize and approve.
           </p>
           <button
-            onClick={handleImport}
+            onClick={() => setWizard(true)}
             disabled={busy}
             style={{
               fontFamily: 'var(--font-body)', fontSize: 14, fontWeight: 600, letterSpacing: '0.1em',
@@ -200,7 +206,7 @@ export default function ImportReview({ onBack }: Props) {
               cursor: busy ? 'wait' : 'pointer', minHeight: 48, opacity: busy ? 0.7 : 1,
             }}
           >
-            {busy ? 'Importing…' : 'Import statement (CSV)'}
+            {busy ? 'Importing…' : 'Import your statement'}
           </button>
         </div>
 
