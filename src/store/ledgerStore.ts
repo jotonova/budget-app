@@ -63,6 +63,14 @@ interface LedgerStore {
   /** Stamp settings.lastImportAt = now (drives the reminder nudge). */
   recordImportNow: () => void
 
+  // Management area
+  /** Restore a skipped row back to the review list (status → 'pending'). */
+  unskipPending: (pendingId: string) => void
+  /** Delete a merchant rule (soft-delete in cloud). */
+  deleteMerchantRule: (id: string) => void
+  /** Forget a saved import profile. */
+  deleteImportProfile: (id: string) => void
+
   // Payment Methods
   addPaymentMethod: (name: string) => void
   updatePaymentMethod: (id: string, name: string) => void
@@ -342,6 +350,38 @@ export const useLedgerStore = create<LedgerStore>((set, get) => ({
     const s = get()
     if (!s.data) return
     const next = { ...s.data, settings: { ...s.data.settings, lastImportAt: new Date().toISOString() } }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+  },
+
+  unskipPending(pendingId) {
+    const s = get()
+    if (!s.data) return
+    const p = s.data.pendingTransactions.find((x) => x.id === pendingId)
+    if (!p || p.status !== 'skipped') return
+    const next = {
+      ...s.data,
+      pendingTransactions: s.data.pendingTransactions.map((x) =>
+        x.id === pendingId ? { ...x, status: 'pending' as const, skipReason: undefined } : x,
+      ),
+    }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+  },
+
+  deleteMerchantRule(id) {
+    const s = get()
+    if (!s.data) return
+    const next = { ...s.data, merchantRules: s.data.merchantRules.filter((r) => r.id !== id) }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+  },
+
+  deleteImportProfile(id) {
+    const s = get()
+    if (!s.data) return
+    const existing = s.data.settings.importProfiles ?? []
+    const next = { ...s.data, settings: { ...s.data.settings, importProfiles: existing.filter((p) => p.id !== id) } }
     set({ data: next })
     persistChange(s.data, next).catch(console.error)
   },

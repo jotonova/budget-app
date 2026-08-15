@@ -10,6 +10,7 @@ import { guessMapping, type GuessResult } from '../lib/import/guess'
 import { findManualMatch, type ManualMatch } from '../lib/import/duplicates'
 import ImportMapper from './ImportMapper'
 import ImportWizard from './ImportWizard'
+import ImportManage from './ImportManage'
 import type { PendingTransaction, Category, Group, PaymentMethod, MerchantRule } from '../lib/types'
 
 interface Props { onBack: () => void }
@@ -51,6 +52,7 @@ export default function ImportReview({ onBack }: Props) {
   const [bulkConfirm, setBulkConfirm] = useState<{ ids: string[]; label: string } | null>(null)
   const [mapper, setMapper] = useState<{ fileName: string; text: string; headers: string[]; rows: Record<string, string>[]; guess: GuessResult } | null>(null)
   const [wizard, setWizard] = useState(false)
+  const [manage, setManage] = useState(false)
 
   const pending = (data?.pendingTransactions ?? [])
     .filter(p => p.status === 'pending')
@@ -155,6 +157,8 @@ export default function ImportReview({ onBack }: Props) {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: 'var(--color-parchment)' }}>
+      {manage && <ImportManage onClose={() => setManage(false)} />}
+
       {wizard && (
         <ImportWizard
           onChooseFile={() => { setWizard(false); handleImport() }}
@@ -177,16 +181,24 @@ export default function ImportReview({ onBack }: Props) {
 
       <div style={{ maxWidth: 760, margin: '0 auto', padding: isMobile ? '20px 16px 96px' : '32px 24px 64px' }}>
 
-        {/* Back */}
-        <button
-          onClick={onBack}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 15, color: 'var(--color-ink-soft)', letterSpacing: '0.1em', textTransform: 'uppercase', padding: 0, marginBottom: 28, display: 'flex', alignItems: 'center', gap: 6 }}
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" style={{ stroke: 'var(--color-ink-soft)', fill: 'none', strokeWidth: 1.4 }}>
-            <path d="M9 2L5 7l4 5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          Dashboard
-        </button>
+        {/* Back + Manage */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, gap: 12 }}>
+          <button
+            onClick={onBack}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 15, color: 'var(--color-ink-soft)', letterSpacing: '0.1em', textTransform: 'uppercase', padding: 0, minHeight: 44, display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" style={{ stroke: 'var(--color-ink-soft)', fill: 'none', strokeWidth: 1.4 }}>
+              <path d="M9 2L5 7l4 5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Dashboard
+          </button>
+          <button
+            onClick={() => setManage(true)}
+            style={{ background: 'none', border: '1px solid var(--color-navy)', borderRadius: 6, cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 600, color: 'var(--color-navy)', padding: '8px 14px', minHeight: 44 }}
+          >
+            Manage…
+          </button>
+        </div>
 
         {/* Import action */}
         <div className="rounded-xl mb-6 p-6" style={{ backgroundColor: 'var(--color-parchment-light)', border: '1px solid var(--color-gold)' }}>
