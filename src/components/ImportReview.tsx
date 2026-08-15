@@ -433,6 +433,11 @@ function PendingRow({
               <RowButton primary disabled={!catId} onClick={() => onApprove(p, catId, pmId || undefined, note || undefined)}>Approve</RowButton>
               <RowButton onClick={() => setDebitMode('split')}>Split…</RowButton>
               <RowButton onClick={() => setDebitMode('skip')}>Skip…</RowButton>
+              {catId && categories.find(c => c.id === catId)?.notes && (
+                <span style={{ width: '100%', fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--color-ink-soft)', fontStyle: 'italic' }}>
+                  {categories.find(c => c.id === catId)!.notes}
+                </span>
+              )}
             </div>
           )}
 

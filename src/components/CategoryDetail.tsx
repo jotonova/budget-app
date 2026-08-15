@@ -77,6 +77,13 @@ export default function CategoryDetail({ categoryId, onBack, onExpenseClick, onA
           Back to Dashboard
         </button>
 
+        {/* Category description ("what goes here") */}
+        {category.notes && (
+          <p style={{ fontFamily: 'var(--font-body)', fontStyle: 'italic', fontSize: 15, color: 'var(--color-ink-soft)', lineHeight: 1.6, margin: '0 0 20px' }}>
+            {category.notes}
+          </p>
+        )}
+
         {/* Budget summary card */}
         {category.budgeted > 0 ? (
           <div

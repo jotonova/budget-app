@@ -3,6 +3,7 @@ import SceneHeader from './scenes/SceneHeader'
 import { useIsMobile } from '../lib/useIsMobile'
 import GroupCard, { StandaloneCard } from './GroupCard'
 import AlertBanner from './AlertBanner'
+import ImportReminder from './ImportReminder'
 import DashboardCharts from './DashboardCharts'
 import { useLedgerStore } from '../store/ledgerStore'
 import { formatCurrency, getCurrentMonth, formatDateLong, today } from '../lib/utils'
@@ -78,6 +79,7 @@ export default function Dashboard({ onAddExpense, onExpenseClick, onCategoryClic
         subtitle={data?.settings.budgetName?.trim() || `Est. 2026  ·  ${dateLabel}`}
       />
       <AlertBanner />
+      <ImportReminder onImport={onImport} />
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: isMobile ? '20px 16px 96px' : '32px 24px 64px' }}>
 
