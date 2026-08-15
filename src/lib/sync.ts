@@ -1,6 +1,7 @@
 import type { LedgerData } from './types'
 import { loadLedger, saveLedger } from './persistence'
 import { loadCloud, saveCloud } from './cloud'
+import { isWeb } from './platform'
 
 /**
  * The single backend router. Local mode writes the whole ledger.json (Phase 1
@@ -20,7 +21,12 @@ export function isCloud(): boolean { return mode.kind === 'cloud' }
 export function setSyncErrorHandler(fn: ((e: unknown) => void) | null): void { onCloudError = fn }
 
 export async function loadData(): Promise<LedgerData> {
-  return mode.kind === 'cloud' ? loadCloud(mode.householdId) : loadLedger()
+  if (mode.kind === 'cloud') return loadCloud(mode.householdId)
+  // Backstop: the local path uses Tauri file APIs that don't exist on the web
+  // build. Web is always cloud once signed in; if we somehow get here, fail
+  // clearly rather than throwing a cryptic "invoke of undefined".
+  if (isWeb) throw new Error('No local budget on the web app — sign in to a household.')
+  return loadLedger()
 }
 
 export async function persistChange(prev: LedgerData | null, next: LedgerData): Promise<void> {
@@ -33,5 +39,6 @@ export async function persistChange(prev: LedgerData | null, next: LedgerData): 
     }
     return
   }
+  if (isWeb) throw new Error('No local budget on the web app — sign in to a household.')
   return saveLedger(next)
 }

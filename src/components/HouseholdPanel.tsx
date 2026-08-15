@@ -4,6 +4,7 @@ import { useHouseholdStore } from '../store/householdStore'
 import { useProfileStore } from '../store/profileStore'
 import { reloadActiveProfile } from '../lib/activeProfile'
 import { formatInviteCode } from '../lib/inviteCode'
+import { isDesktop } from '../lib/platform'
 
 export default function HouseholdPanel() {
   const userId = useAuthStore(s => s.user?.id)
@@ -120,12 +121,15 @@ export default function HouseholdPanel() {
             </div>
           </div>
 
-          {/* Switch controls */}
+          {/* Switch controls. "Switch to Local" only exists on desktop — the web
+              build has no on-device local budget. */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
             {activeCloudHere ? (
-              <button style={ghost} disabled={switching} onClick={() => useProfileStore.getState().useLocal()}>
-                Switch to Local
-              </button>
+              isDesktop && (
+                <button style={ghost} disabled={switching} onClick={() => useProfileStore.getState().useLocal()}>
+                  Switch to Local
+                </button>
+              )
             ) : (
               <button
                 style={primary}
@@ -168,8 +172,9 @@ export default function HouseholdPanel() {
             </div>
           )}
 
-          {/* One-time import of the local budget into this household */}
-          {activeCloudHere && (
+          {/* One-time import of the local budget into this household.
+              Desktop only — the web build has no on-device local file to read. */}
+          {isDesktop && activeCloudHere && (
             <div style={{ marginTop: 16 }}>
               {!confirmImport ? (
                 <button style={ghost} disabled={importing} onClick={() => { setImportMsg(''); setConfirmImport(true) }}>

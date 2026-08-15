@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/authStore'
 import { useHouseholdStore } from '../store/householdStore'
 import { useProfileStore } from '../store/profileStore'
 import { markDeviceOnboarded } from '../lib/persistence'
+import { isDesktop } from '../lib/platform'
 import { useIsMobile } from '../lib/useIsMobile'
 import { generateId, formatCurrency } from '../lib/utils'
 import { formatInviteCode } from '../lib/inviteCode'
@@ -115,9 +116,14 @@ export default function Onboarding({ onClose }: Props) {
   // ── Actions ──────────────────────────────────────────────────────────────────
   async function markDone() {
     // `onboarded` is a per-device flag. In cloud mode commitOnboarding writes to
-    // the household (which doesn't store it), so stamp the local file directly.
-    if (useProfileStore.getState().mode === 'cloud') await markDeviceOnboarded()
-    else updateSettings({ onboarded: true })
+    // the household (which doesn't store it), so stamp the local file directly —
+    // but ONLY on desktop; the web build has no local file and never re-shows
+    // onboarding at launch, so there's nothing to stamp there.
+    if (useProfileStore.getState().mode === 'cloud') {
+      if (isDesktop) await markDeviceOnboarded()
+    } else {
+      updateSettings({ onboarded: true })
+    }
   }
   async function handleSkip() {
     await markDone()
