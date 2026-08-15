@@ -1,7 +1,8 @@
 import { create } from 'zustand'
-import type { LedgerData, Expense, PaymentMethod, LedgerSettings, Category, OnboardingPayload } from '../lib/types'
+import type { LedgerData, Expense, PaymentMethod, LedgerSettings, Category, OnboardingPayload, PendingTransaction, OneTimeIncome, MerchantRule } from '../lib/types'
+import type { ImportProfile } from '../lib/import/profiles'
 import { persistChange } from '../lib/sync'
-import { generateId } from '../lib/utils'
+import { generateId, deterministicId } from '../lib/utils'
 import { checkBudgetAlerts } from '../lib/notifications'
 
 // ── State shape ───────────────────────────────────────────────────────────────
@@ -18,11 +19,57 @@ interface LedgerStore {
   addExpense: (expense: Omit<Expense, 'id' | 'createdAt'>) => string
   deleteExpense: (id: string) => void
   restoreExpense: (expense: Expense) => void
-  updateExpense: (id: string, updates: Partial<Pick<Expense, 'amount' | 'date' | 'description' | 'paymentMethodId'>>) => void
+  updateExpense: (id: string, updates: Partial<Pick<Expense, 'amount' | 'date' | 'description' | 'paymentMethodId' | 'categoryId'>>) => void
 
   // Settings & onboarding
   updateSettings: (patch: Partial<LedgerSettings>) => void
   commitOnboarding: (payload: OnboardingPayload) => void
+
+  // Statement import (Phase 4) — pending rows never touch the budget
+  addPendingTransactions: (candidates: PendingTransaction[]) => number
+  /** Approve a pending row into a real expense. Idempotent: the expense id is
+   *  derived from the pending-row id, so re-approving / concurrent approval by
+   *  both partners converges to ONE expense. Optional `note` overrides the
+   *  expense description (raw bank text stays on the pending row). Returns the id. */
+  approvePending: (pendingId: string, categoryId: string, paymentMethodId?: string, note?: string) => string | null
+  /** Skip a pending row (optionally with a reason). It leaves the review list but
+   *  stays recorded so its dedupKey blocks re-imports. */
+  skipPending: (pendingId: string, reason?: string) => void
+  /** Bulk-skip many pending rows in ONE write. ONLY rows currently status==='pending'
+   *  are affected — approved expenses and budget totals are never touched. Skipped
+   *  rows stay recorded so their dedupKeys keep blocking re-imports. Returns how
+   *  many were skipped. */
+  bulkSkipPending: (ids: string[], reason?: string) => number
+  /** Approve a pending row as a SPLIT across categories (amounts should sum to the
+   *  row total). Creates one expense per part; ids derived from the pending id.
+   *  Each part may carry an optional `note` → that line's expense description. */
+  approveSplit: (pendingId: string, parts: { categoryId: string; amount: number; note?: string }[], paymentMethodId?: string) => string[] | null
+  /** Approve a credit (money-in) row as a REFUND credited to a category — a
+   *  negative-amount expense that reduces that category's spending. Optional
+   *  `note` overrides the description (default "Refund: <raw>"). */
+  approveRefund: (pendingId: string, categoryId: string, paymentMethodId?: string, note?: string) => string | null
+  /** Approve a credit row as ONE-TIME INCOME (windfall) with a label. */
+  approveOneTimeIncome: (pendingId: string, label: string, note?: string) => string | null
+  /** Remember merchant → category (per household). Pre-fills future imports; upsert by match. */
+  addMerchantRule: (match: string, categoryId: string, paymentMethodId?: string) => void
+
+  // One-time income surfacing (additive; recurring income untouched)
+  oneTimeIncomeForMonth: (month: string) => number
+  oneTimeIncomeForYear: (year: string) => number
+
+  // Import profiles + reminder bookkeeping (stored in settings, synced)
+  /** Save/replace a per-bank import profile (upsert by header signature). */
+  addImportProfile: (profile: ImportProfile) => void
+  /** Stamp settings.lastImportAt = now (drives the reminder nudge). */
+  recordImportNow: () => void
+
+  // Management area
+  /** Restore a skipped row back to the review list (status → 'pending'). */
+  unskipPending: (pendingId: string) => void
+  /** Delete a merchant rule (soft-delete in cloud). */
+  deleteMerchantRule: (id: string) => void
+  /** Forget a saved import profile. */
+  deleteImportProfile: (id: string) => void
 
   // Payment Methods
   addPaymentMethod: (name: string) => void
@@ -97,6 +144,246 @@ export const useLedgerStore = create<LedgerStore>((set, get) => ({
       persistChange(s.data, next).catch(console.error)
       return { data: next }
     })
+  },
+
+  addPendingTransactions(candidates) {
+    const s = get()
+    if (!s.data) return 0
+    // Dedup against everything already imported (pending/approved/skipped), so a
+    // re-imported or overlapping statement adds nothing it's already seen.
+    const existing = new Set(s.data.pendingTransactions.map((p) => p.dedupKey))
+    const fresh = candidates.filter((c) => !existing.has(c.dedupKey))
+    if (fresh.length === 0) return 0
+    const next = { ...s.data, pendingTransactions: [...s.data.pendingTransactions, ...fresh] }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+    return fresh.length
+  },
+
+  approvePending(pendingId, categoryId, paymentMethodId, note) {
+    const s = get()
+    if (!s.data) return null
+    const p = s.data.pendingTransactions.find((x) => x.id === pendingId)
+    if (!p || p.status === 'approved') return null
+    // Deterministic, valid-uuid expense id (pending ids are uuids) → idempotent
+    // across re-approve and two-partner concurrency (upsert, never duplicate).
+    const expenseId = pendingId
+    const expense: Expense = {
+      id: expenseId,
+      categoryId,
+      amount: Math.abs(p.amount), // expenses store positive spend
+      date: p.date,
+      description: note?.trim() || p.rawDescription,
+      createdAt: new Date().toISOString(),
+      ...(paymentMethodId ? { paymentMethodId } : {}),
+    }
+    const next = {
+      ...s.data,
+      expenses: [...s.data.expenses.filter((e) => e.id !== expenseId), expense],
+      pendingTransactions: s.data.pendingTransactions.map((x) =>
+        x.id === pendingId ? { ...x, status: 'approved' as const, resolvedRefs: [expenseId] } : x,
+      ),
+    }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+    checkBudgetAlerts(next, categoryId).catch(console.error)
+    return expenseId
+  },
+
+  skipPending(pendingId, reason) {
+    const s = get()
+    if (!s.data) return
+    const p = s.data.pendingTransactions.find((x) => x.id === pendingId)
+    if (!p || p.status === 'skipped') return
+    const next = {
+      ...s.data,
+      pendingTransactions: s.data.pendingTransactions.map((x) =>
+        x.id === pendingId
+          ? { ...x, status: 'skipped' as const, ...(reason ? { skipReason: reason } : {}) }
+          : x,
+      ),
+    }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+  },
+
+  bulkSkipPending(ids, reason) {
+    const s = get()
+    if (!s.data) return 0
+    const idSet = new Set(ids)
+    let count = 0
+    const nextPending = s.data.pendingTransactions.map((x) => {
+      // Guard on status==='pending' — never re-touch approved/already-skipped rows,
+      // so this can't disturb any created expense or the budget.
+      if (idSet.has(x.id) && x.status === 'pending') {
+        count++
+        return { ...x, status: 'skipped' as const, ...(reason ? { skipReason: reason } : {}) }
+      }
+      return x
+    })
+    if (count === 0) return 0
+    const next = { ...s.data, pendingTransactions: nextPending }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error) // one write → one cloud sync
+    return count
+  },
+
+  approveSplit(pendingId, parts, paymentMethodId) {
+    const s = get()
+    if (!s.data) return null
+    const p = s.data.pendingTransactions.find((x) => x.id === pendingId)
+    if (!p || p.status === 'approved') return null
+    const valid = parts.filter((pt) => pt.categoryId && pt.amount > 0)
+    if (valid.length === 0) return null
+    const createdAt = new Date().toISOString()
+    const ids: string[] = []
+    const newExpenses: Expense[] = valid.map((pt, i) => {
+      const id = deterministicId(`${pendingId}:${i}`) // deterministic → idempotent
+      ids.push(id)
+      return {
+        id, categoryId: pt.categoryId, amount: Math.abs(pt.amount), date: p.date,
+        description: pt.note?.trim() || p.rawDescription, createdAt,
+        ...(paymentMethodId ? { paymentMethodId } : {}),
+      }
+    })
+    const newIds = new Set(ids)
+    const next = {
+      ...s.data,
+      expenses: [...s.data.expenses.filter((e) => !newIds.has(e.id)), ...newExpenses],
+      pendingTransactions: s.data.pendingTransactions.map((x) =>
+        x.id === pendingId ? { ...x, status: 'approved' as const, resolvedRefs: ids } : x,
+      ),
+    }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+    for (const pt of valid) checkBudgetAlerts(next, pt.categoryId).catch(console.error)
+    return ids
+  },
+
+  approveRefund(pendingId, categoryId, paymentMethodId, note) {
+    const s = get()
+    if (!s.data) return null
+    const p = s.data.pendingTransactions.find((x) => x.id === pendingId)
+    if (!p || p.status === 'approved') return null
+    const expenseId = pendingId
+    // Negative-amount expense: reduces the category's spending, keeping the budget accurate.
+    const expense: Expense = {
+      id: expenseId, categoryId, amount: -Math.abs(p.amount), date: p.date,
+      description: (note?.trim() || `Refund: ${p.rawDescription}`).slice(0, 200), createdAt: new Date().toISOString(),
+      ...(paymentMethodId ? { paymentMethodId } : {}),
+    }
+    const next = {
+      ...s.data,
+      expenses: [...s.data.expenses.filter((e) => e.id !== expenseId), expense],
+      pendingTransactions: s.data.pendingTransactions.map((x) =>
+        x.id === pendingId ? { ...x, status: 'approved' as const, resolvedRefs: [expenseId] } : x,
+      ),
+    }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+    return expenseId
+  },
+
+  approveOneTimeIncome(pendingId, label, note) {
+    const s = get()
+    if (!s.data) return null
+    const p = s.data.pendingTransactions.find((x) => x.id === pendingId)
+    if (!p || p.status === 'approved') return null
+    const incomeId = pendingId // deterministic uuid → idempotent
+    const entry: OneTimeIncome = {
+      id: incomeId, amount: Math.abs(p.amount), date: p.date,
+      label: label.trim() || 'One-time income', createdAt: new Date().toISOString(),
+      ...(note ? { note } : {}),
+    }
+    const next = {
+      ...s.data,
+      oneTimeIncome: [...s.data.oneTimeIncome.filter((o) => o.id !== incomeId), entry],
+      pendingTransactions: s.data.pendingTransactions.map((x) =>
+        x.id === pendingId ? { ...x, status: 'approved' as const, resolvedRefs: [incomeId] } : x,
+      ),
+    }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+    return incomeId
+  },
+
+  addMerchantRule(match, categoryId, paymentMethodId) {
+    const s = get()
+    if (!s.data || !match) return
+    const existing = s.data.merchantRules.find((r) => r.match === match)
+    const rule: MerchantRule = {
+      id: existing?.id ?? generateId(), match, categoryId,
+      createdAt: existing?.createdAt ?? new Date().toISOString(),
+      ...(paymentMethodId ? { paymentMethodId } : {}),
+    }
+    const next = {
+      ...s.data,
+      merchantRules: [...s.data.merchantRules.filter((r) => r.match !== match), rule],
+    }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+  },
+
+  oneTimeIncomeForMonth(month) {
+    const d = get().data
+    if (!d) return 0
+    return d.oneTimeIncome.filter((o) => o.date.startsWith(month)).reduce((sum, o) => sum + o.amount, 0)
+  },
+
+  oneTimeIncomeForYear(year) {
+    const d = get().data
+    if (!d) return 0
+    return d.oneTimeIncome.filter((o) => o.date.startsWith(year)).reduce((sum, o) => sum + o.amount, 0)
+  },
+
+  addImportProfile(profile) {
+    const s = get()
+    if (!s.data) return
+    const existing = s.data.settings.importProfiles ?? []
+    const merged = [...existing.filter((p) => p.headerSignature !== profile.headerSignature), profile]
+    const next = { ...s.data, settings: { ...s.data.settings, importProfiles: merged } }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+  },
+
+  recordImportNow() {
+    const s = get()
+    if (!s.data) return
+    const next = { ...s.data, settings: { ...s.data.settings, lastImportAt: new Date().toISOString() } }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+  },
+
+  unskipPending(pendingId) {
+    const s = get()
+    if (!s.data) return
+    const p = s.data.pendingTransactions.find((x) => x.id === pendingId)
+    if (!p || p.status !== 'skipped') return
+    const next = {
+      ...s.data,
+      pendingTransactions: s.data.pendingTransactions.map((x) =>
+        x.id === pendingId ? { ...x, status: 'pending' as const, skipReason: undefined } : x,
+      ),
+    }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+  },
+
+  deleteMerchantRule(id) {
+    const s = get()
+    if (!s.data) return
+    const next = { ...s.data, merchantRules: s.data.merchantRules.filter((r) => r.id !== id) }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
+  },
+
+  deleteImportProfile(id) {
+    const s = get()
+    if (!s.data) return
+    const existing = s.data.settings.importProfiles ?? []
+    const next = { ...s.data, settings: { ...s.data.settings, importProfiles: existing.filter((p) => p.id !== id) } }
+    set({ data: next })
+    persistChange(s.data, next).catch(console.error)
   },
 
   expensesForMonth(month) {

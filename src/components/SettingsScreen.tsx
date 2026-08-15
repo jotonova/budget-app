@@ -190,8 +190,8 @@ function EditCatDialog({ cat, groups, onSave, onClose }: EditCatDialogProps) {
         <label style={lbl}>Alert threshold ({alertThreshold}%)</label>
         <input type="range" min={50} max={100} value={alertThreshold} onChange={e => setAlertThreshold(Number(e.target.value))} style={{ width: '100%', marginBottom: 16, accentColor: 'var(--color-navy)' }} />
 
-        <label style={lbl}>Notes (optional)</label>
-        <input value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inp, marginBottom: 20 }} />
+        <label style={lbl}>Description — what goes here (optional)</label>
+        <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. Streaming, apps, and online subscriptions" style={{ ...inp, marginBottom: 20 }} />
 
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={handleSave} style={primaryBtn}>Save</button>
@@ -211,6 +211,7 @@ export default function SettingsScreen({ onBack, onRerunSetup }: Props) {
   const updatePaymentMethod = useLedgerStore(s => s.updatePaymentMethod)
   const deletePaymentMethod = useLedgerStore(s => s.deletePaymentMethod)
   const reorderPaymentMethods = useLedgerStore(s => s.reorderPaymentMethods)
+  const updateSettings = useLedgerStore(s => s.updateSettings)
 
   const [activeSection, setActiveSection] = useState<'income' | 'categories' | 'paymentMethods' | 'defaults' | 'backup'>('income')
   const [editingCat, setEditingCat] = useState<Category | null>(null)
@@ -638,6 +639,27 @@ export default function SettingsScreen({ onBack, onRerunSetup }: Props) {
                 />
                 <p style={{ fontFamily: 'var(--font-body)', fontSize: 15, color: 'var(--color-ink-soft)', marginTop: 6 }}>
                   Variable categories send a notification when spending crosses this percentage.
+                </p>
+              </div>
+
+              {/* Import reminder */}
+              <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--color-parchment-dark)' }}>
+                <label style={lbl}>Statement import reminder</label>
+                <select
+                  value={String(data?.settings.importReminderDays ?? 7)}
+                  onChange={e => updateSettings({ importReminderDays: Number(e.target.value) })}
+                  style={{ ...inp, marginTop: 6 }}
+                >
+                  <option value="0">Off</option>
+                  <option value="7">Every 7 days</option>
+                  <option value="14">Every 14 days</option>
+                  <option value="30">Every 30 days</option>
+                  <option value="45">Every 45 days</option>
+                  <option value="60">Every 60 days</option>
+                  <option value="90">Every 90 days</option>
+                </select>
+                <p style={{ fontFamily: 'var(--font-body)', fontSize: 15, color: 'var(--color-ink-soft)', marginTop: 6 }}>
+                  A gentle banner appears when it's been this long since your last import. Shared across the household.
                 </p>
               </div>
 

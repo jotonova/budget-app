@@ -1,0 +1,7 @@
+Transaction Date,Transaction Description,Amount,Category
+Monday - 08/11/2026,"POS PURCHASE SAMPLE GROCER #0123 ANYTOWN ST",- $54.23,Groceries
+Tuesday - 08/12/2026,"ACME HARDWARE 456 WEB PMT",- $12.00,Home
+Wednesday - 08/13/2026,"PAYROLL DIRECT DEP EXAMPLE CO",+ $1,750.00,Deposits
+Thursday - 08/14/2026,"REFUND EXAMPLE RETAILER",+ $19.99,Shopping
+Friday - 08/15/2026,"COFFEE SAMPLE SHOP",- $5.00,Dining
+Friday - 08/15/2026,"COFFEE SAMPLE SHOP",- $5.00,Dining

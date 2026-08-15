@@ -24,6 +24,7 @@
     "date-fns": "^4.1.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
+    "papaparse": "^5.5.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "recharts": "^3.8.1",
@@ -32,6 +33,7 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.4",
     "@tauri-apps/cli": "^2",
+    "@types/papaparse": "^5.5.2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",

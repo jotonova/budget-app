@@ -1,3 +1,5 @@
+import type { ImportProfile } from './import/profiles'
+
 // ── Income ────────────────────────────────────────────────────────────────────
 
 export interface IncomeSource {
@@ -70,6 +72,12 @@ export interface LedgerSettings {
   lastRolloverMonth?: string
   /** The first month (YYYY-MM-DD) from which expense tracking began — YTD excludes earlier months */
   trackingStartDate?: string
+  /** Saved per-bank import column mappings (synced across the household). */
+  importProfiles?: ImportProfile[]
+  /** Import-reminder interval in days; 0 = off. Default 7. */
+  importReminderDays?: number
+  /** ISO timestamp of the most recent statement import (drives the reminder nudge). */
+  lastImportAt?: string
 }
 
 // ── Onboarding ────────────────────────────────────────────────────────────────
@@ -89,6 +97,66 @@ export interface MonthArchive {
   archivedAt: string
 }
 
+// ── Phase 4: statement import ─────────────────────────────────────────────────
+
+/** How a pending row was interpreted: money out (debit) vs money in (credit). */
+export type TxnDirection = 'debit' | 'credit'
+
+/** A pending row moves pending → approved | skipped. Resolved rows are KEPT
+ *  (not deleted) so their dedupKey blocks re-imports of the same transaction. */
+export type PendingStatus = 'pending' | 'approved' | 'skipped'
+
+/** An imported statement line awaiting human review. Nothing here touches the
+ *  budget until it's approved into an Expense / OneTimeIncome. */
+export interface PendingTransaction {
+  id: string
+  /** Stable de-dup key: OFX FITID (+account), else hash(date,amount,merchant)#occurrence. */
+  dedupKey: string
+  /** Where it came from — drives parsing/format. */
+  source: 'csv' | 'ofx'
+  /** Groups rows from one import for labelling/undo (optional). */
+  importBatchId?: string
+  /** Posted date, ISO YYYY-MM-DD. */
+  date: string
+  /** Normalized merchant token used for rule matching (e.g. "walmart"). */
+  merchant: string
+  /** Raw description exactly as it appeared in the statement. */
+  rawDescription: string
+  /** Signed amount as interpreted: negative = money out, positive = money in. */
+  amount: number
+  direction: TxnDirection
+  status: PendingStatus
+  /** Optional note when skipped (transfer, card payment, not a real expense). */
+  skipReason?: string
+  /** Ids of the Expense(s) / OneTimeIncome created on approval (idempotency + undo). */
+  resolvedRefs?: string[]
+  createdAt: string
+}
+
+/** Remembered "this merchant → this category" mapping, per household. Pre-fills
+ *  the category on future imports; never auto-posts (Phase 4 keeps approval manual). */
+export interface MerchantRule {
+  id: string
+  /** Normalized merchant token to match. */
+  match: string
+  categoryId: string
+  paymentMethodId?: string
+  createdAt: string
+}
+
+/** Irregular, non-recurring income (tax refund, gift, interest). Distinct from
+ *  recurring IncomeSource so it never repeats monthly; surfaced additively on
+ *  Dashboard / YTD by date. */
+export interface OneTimeIncome {
+  id: string
+  amount: number
+  /** ISO date received, YYYY-MM-DD. */
+  date: string
+  label: string
+  note?: string
+  createdAt: string
+}
+
 // ── Root data ─────────────────────────────────────────────────────────────────
 
 export interface LedgerData {
@@ -100,4 +168,8 @@ export interface LedgerData {
   settings: LedgerSettings
   history: MonthArchive[]
   paymentMethods: PaymentMethod[]
+  // Phase 4 — statement import (empty until the importer is used)
+  pendingTransactions: PendingTransaction[]
+  merchantRules: MerchantRule[]
+  oneTimeIncome: OneTimeIncome[]
 }

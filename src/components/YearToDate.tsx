@@ -39,6 +39,7 @@ export default function YearToDate({ onBack }: Props) {
   const data = useLedgerStore(s => s.data)
   const expensesForMonth = useLedgerStore(s => s.expensesForMonth)
   const totalIncome = useLedgerStore(s => s.totalIncome)
+  const oneTimeIncomeForYear = useLedgerStore(s => s.oneTimeIncomeForYear)
 
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null)
   const currentMonth = getCurrentMonth()
@@ -88,10 +89,11 @@ export default function YearToDate({ onBack }: Props) {
       }
     }
     const completedMonths = monthSummaries.filter(m => m.status !== 'future' && !m.beforeTracking).length
-    const totalIncomeSoFar = income * completedMonths
+    // Recurring income accrued + any one-time income received this year (additive).
+    const totalIncomeSoFar = income * completedMonths + oneTimeIncomeForYear(String(YEAR))
     const net = totalIncomeSoFar - totalSpent
     return { totalSpent, savingsSpent, essentialSpent, nonEssentialSpent, net, totalIncomeSoFar }
-  }, [monthSummaries, data, income])
+  }, [monthSummaries, data, income, oneTimeIncomeForYear])
 
   const ytdRemaining = Math.max(0, ytdTotals.totalIncomeSoFar - ytdTotals.totalSpent)
 

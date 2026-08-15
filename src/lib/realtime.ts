@@ -3,10 +3,10 @@ import { supabase } from './supabase'
 import { useLedgerStore } from '../store/ledgerStore'
 import { useAuthStore } from '../store/authStore'
 import { getVersion, setVersion, versionKey } from './cloudVersions'
-import { rowToIncome, rowToGroup, rowToPayment, rowToCategory, rowToExpense, rowToSettings } from './cloud'
+import { rowToIncome, rowToGroup, rowToPayment, rowToCategory, rowToExpense, rowToSettings, rowToPending, rowToMerchantRule, rowToOneTimeIncome } from './cloud'
 import type { LedgerData } from './types'
 
-const TABLES = ['income_sources', 'groups', 'payment_methods', 'categories', 'expenses', 'household_settings']
+const TABLES = ['income_sources', 'groups', 'payment_methods', 'categories', 'expenses', 'household_settings', 'pending_transactions', 'merchant_rules', 'one_time_income']
 
 let channel: RealtimeChannel | null = null
 
@@ -87,6 +87,12 @@ function applyRow(d: LedgerData, table: string, row: any, remove: boolean): Ledg
       return { ...d, categories: mergeArr(d.categories, row.id, remove ? null : rowToCategory(row)) }
     case 'expenses':
       return { ...d, expenses: mergeArr(d.expenses, row.id, remove ? null : rowToExpense(row)) }
+    case 'pending_transactions':
+      return { ...d, pendingTransactions: mergeArr(d.pendingTransactions, row.id, remove ? null : rowToPending(row)) }
+    case 'merchant_rules':
+      return { ...d, merchantRules: mergeArr(d.merchantRules, row.id, remove ? null : rowToMerchantRule(row)) }
+    case 'one_time_income':
+      return { ...d, oneTimeIncome: mergeArr(d.oneTimeIncome, row.id, remove ? null : rowToOneTimeIncome(row)) }
     default:
       return d
   }

@@ -14,13 +14,14 @@ import CategoryDetail from './components/CategoryDetail'
 import LedgerView from './components/LedgerView'
 import SettingsScreen from './components/SettingsScreen'
 import YearToDate from './components/YearToDate'
+import ImportReview from './components/ImportReview'
 import ExpenseModal from './components/ExpenseModal'
 import Onboarding from './components/Onboarding'
 import Toast from './components/Toast'
 import { formatCurrency } from './lib/utils'
 import type { Expense } from './lib/types'
 
-type Page = 'dashboard' | 'add-expense' | 'category-detail' | 'ledger' | 'settings' | 'ytd'
+type Page = 'dashboard' | 'add-expense' | 'category-detail' | 'ledger' | 'settings' | 'ytd' | 'import'
 
 interface ToastData {
   id: string
@@ -95,7 +96,7 @@ export default function App() {
 
   // ── ExpenseModal callbacks ─────────────────────────────────────────────────
 
-  function handleExpenseSave(id: string, updates: { amount: number; date: string; description: string; paymentMethodId?: string }) {
+  function handleExpenseSave(id: string, updates: { amount: number; date: string; description: string; paymentMethodId?: string; categoryId: string }) {
     updateExpense(id, updates)
     setEditingExpense(null)
   }
@@ -204,6 +205,9 @@ export default function App() {
       {page === 'ytd' && (
         <YearToDate onBack={() => setPage('dashboard')} />
       )}
+      {page === 'import' && (
+        <ImportReview onBack={() => setPage('dashboard')} />
+      )}
       {page === 'dashboard' && (
         <Dashboard
           onAddExpense={() => { setAddExpenseCategoryId(null); setPage('add-expense') }}
@@ -212,6 +216,7 @@ export default function App() {
           onViewLedger={() => setPage('ledger')}
           onSettings={() => setPage('settings')}
           onYearToDate={() => setPage('ytd')}
+          onImport={() => setPage('import')}
         />
       )}
 

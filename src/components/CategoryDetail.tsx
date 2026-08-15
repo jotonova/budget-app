@@ -43,9 +43,12 @@ export default function CategoryDetail({ categoryId, onBack, onExpenseClick, onA
   const category = useMemo(() => data?.categories.find(c => c.id === categoryId), [data, categoryId])
   const group = useMemo(() => category?.groupId ? data?.groups.find(g => g.id === category.groupId) : null, [data, category])
 
+  // `data` MUST be in the deps: expensesForMonth is a stable zustand action ref,
+  // so without `data` this memo froze at mount and showed stale rows after an edit
+  // (reopening handed the modal a pre-edit expense object → "the change is gone").
   const expenses = useMemo(
     () => expensesForMonth(month).filter(e => e.categoryId === categoryId).sort((a, b) => b.date.localeCompare(a.date)),
-    [expensesForMonth, month, categoryId],
+    [data, expensesForMonth, month, categoryId],
   )
 
   if (!category) return null
@@ -73,6 +76,13 @@ export default function CategoryDetail({ categoryId, onBack, onExpenseClick, onA
           </svg>
           Back to Dashboard
         </button>
+
+        {/* Category description ("what goes here") */}
+        {category.notes && (
+          <p style={{ fontFamily: 'var(--font-body)', fontStyle: 'italic', fontSize: 15, color: 'var(--color-ink-soft)', lineHeight: 1.6, margin: '0 0 20px' }}>
+            {category.notes}
+          </p>
+        )}
 
         {/* Budget summary card */}
         {category.budgeted > 0 ? (

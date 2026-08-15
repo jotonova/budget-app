@@ -6,7 +6,7 @@ import { useLedgerStore } from '../store/ledgerStore'
 interface Props {
   expense: Expense
   categoryName: string
-  onSave: (id: string, updates: { amount: number; date: string; description: string; paymentMethodId?: string }) => void
+  onSave: (id: string, updates: { amount: number; date: string; description: string; paymentMethodId?: string; categoryId: string }) => void
   onDelete: (expense: Expense) => void
   onCancel: () => void
 }
@@ -17,11 +17,19 @@ export default function ExpenseModal({ expense, categoryName, onSave, onDelete, 
   const [date, setDate] = useState(expense.date)
   const [description, setDescription] = useState(expense.description)
   const [paymentMethodId, setPaymentMethodId] = useState(expense.paymentMethodId ?? '')
+  const [categoryId, setCategoryId] = useState(expense.categoryId)
   const [error, setError] = useState('')
 
+  const groups = (data?.groups ?? []).slice().sort((a, b) => a.order - b.order)
+  const categories = data?.categories ?? []
+  const standalones = categories.filter(c => c.groupId === null).sort((a, b) => a.order - b.order)
+  const liveCategoryName = categories.find(c => c.id === categoryId)?.name ?? categoryName
+
   function handleAmountChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const v = e.target.value.replace(/[^\d.]/g, '')
-    const parts = v.split('.')
+    // Keep an optional leading minus (refunds are negative), digits and one dot.
+    let v = e.target.value.replace(/[^\d.-]/g, '')
+    v = v.replace(/(?!^)-/g, '') // only a leading minus
+    const parts = v.replace('-', '').split('.')
     if (parts.length > 2) return
     if (parts[1] && parts[1].length > 2) return
     setAmount(v)
@@ -29,8 +37,13 @@ export default function ExpenseModal({ expense, categoryName, onSave, onDelete, 
 
   function handleSave() {
     const parsed = parseFloat(amount)
-    if (!amount || isNaN(parsed) || parsed <= 0) {
-      setError('Please enter a valid amount.')
+    // Allow negative amounts (refunds/credits); reject only empty, non-numeric, or zero.
+    if (!amount || isNaN(parsed) || parsed === 0) {
+      setError('Please enter a valid amount (negative is allowed for a refund).')
+      return
+    }
+    if (!categoryId) {
+      setError('Please choose a category.')
       return
     }
     setError('')
@@ -38,6 +51,7 @@ export default function ExpenseModal({ expense, categoryName, onSave, onDelete, 
       amount: parsed,
       date,
       description: description.trim(),
+      categoryId,
       ...(paymentMethodId ? { paymentMethodId } : { paymentMethodId: undefined }),
     })
   }
@@ -67,8 +81,32 @@ export default function ExpenseModal({ expense, categoryName, onSave, onDelete, 
             Editing entry
           </p>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 500, color: 'var(--color-navy)', margin: 0 }}>
-            {categoryName}
+            {liveCategoryName}
           </h2>
+        </div>
+
+        {/* Category */}
+        <div className="mb-5">
+          <label style={label}>Category</label>
+          <select
+            value={categoryId}
+            onChange={e => setCategoryId(e.target.value)}
+            style={{
+              width: '100%', padding: '10px 14px', fontSize: 16, fontFamily: 'var(--font-body)',
+              color: 'var(--color-ink)', border: '1px solid var(--color-gold)', borderRadius: 8,
+              backgroundColor: 'white', outline: 'none', appearance: 'none',
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath stroke='%235a6d8c' stroke-width='1.5' fill='none' stroke-linecap='round' d='M4 6l4 4 4-4'/%3E%3C/svg%3E")`,
+              backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 40,
+            }}
+          >
+            <option value="" disabled>Choose category…</option>
+            {groups.map(g => {
+              const cats = categories.filter(c => c.groupId === g.id).sort((a, b) => a.order - b.order)
+              if (cats.length === 0) return null
+              return <optgroup key={g.id} label={g.name}>{cats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</optgroup>
+            })}
+            {standalones.length > 0 && <optgroup label="Other">{standalones.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</optgroup>}
+          </select>
         </div>
 
         {/* Amount */}

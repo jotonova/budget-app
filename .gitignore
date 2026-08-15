@@ -30,3 +30,20 @@ dist-ssr
 !.env.example
 # Public-safe cloud config baked into release builds (publishable key; RLS-protected)
 !.env.production
+
+# PRIVACY: real bank/card statements — NEVER commit (repo is public).
+# Drop sample statements under samples/ for local Stage 1 work only.
+/samples/
+*.qfx
+*.ofx
+*.qbo
+# Statement CSVs anywhere in the tree (our own fixtures use *.fixture.csv instead)
+statement*.csv
+*statement*.csv
+*-transactions.csv
+*_transactions.csv
+accountActivityExport*.csv          # PNC's default export filename
+# Belt-and-suspenders: ignore ALL .csv anywhere EXCEPT our synthetic committed
+# fixtures (*.fixture.csv). No real bank CSV can be committed to this public repo.
+*.csv
+!*.fixture.csv

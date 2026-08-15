@@ -3,6 +3,7 @@ import SceneHeader from './scenes/SceneHeader'
 import { useIsMobile } from '../lib/useIsMobile'
 import GroupCard, { StandaloneCard } from './GroupCard'
 import AlertBanner from './AlertBanner'
+import ImportReminder from './ImportReminder'
 import DashboardCharts from './DashboardCharts'
 import { useLedgerStore } from '../store/ledgerStore'
 import { formatCurrency, getCurrentMonth, formatDateLong, today } from '../lib/utils'
@@ -15,6 +16,7 @@ interface Props {
   onViewLedger: () => void
   onSettings: () => void
   onYearToDate: () => void
+  onImport: () => void
 }
 
 function insightForDay(totalIncome: number, totalSpent: number): string {
@@ -31,15 +33,18 @@ function insightForDay(totalIncome: number, totalSpent: number): string {
   return `All is in good order. The household accounts balance well for the ${dayOfMonth}${dayOfMonth === 1 ? 'st' : dayOfMonth === 2 ? 'nd' : dayOfMonth === 3 ? 'rd' : 'th'}.`
 }
 
-export default function Dashboard({ onAddExpense, onExpenseClick, onCategoryClick, onViewLedger, onSettings, onYearToDate }: Props) {
+export default function Dashboard({ onAddExpense, onExpenseClick, onCategoryClick, onViewLedger, onSettings, onYearToDate, onImport }: Props) {
   const data = useLedgerStore(s => s.data)
+  const pendingCount = data?.pendingTransactions.filter(p => p.status === 'pending').length ?? 0
   const totalSpentFn = useLedgerStore(s => s.totalSpent)
   const totalIncomeFn = useLedgerStore(s => s.totalIncome)
+  const oneTimeForMonthFn = useLedgerStore(s => s.oneTimeIncomeForMonth)
 
   const month = getCurrentMonth()
   const totalIncome = totalIncomeFn()
+  const oneTimeThisMonth = oneTimeForMonthFn(month)
   const totalSpent = totalSpentFn(month)
-  const available = totalIncome - totalSpent
+  const available = totalIncome + oneTimeThisMonth - totalSpent
 
   const essentialGroups = useMemo(
     () => data?.groups.filter(g => g.essential).sort((a, b) => a.order - b.order) ?? [],
@@ -74,6 +79,7 @@ export default function Dashboard({ onAddExpense, onExpenseClick, onCategoryClic
         subtitle={data?.settings.budgetName?.trim() || `Est. 2026  ·  ${dateLabel}`}
       />
       <AlertBanner />
+      <ImportReminder onImport={onImport} />
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: isMobile ? '20px 16px 96px' : '32px 24px 64px' }}>
 
@@ -90,6 +96,9 @@ export default function Dashboard({ onAddExpense, onExpenseClick, onCategoryClic
           </p>
           <p style={{ fontFamily: 'var(--font-body)', fontSize: 16, color: 'rgba(244,237,224,0.65)', marginTop: 8 }}>
             of {formatCurrency(totalIncome)} monthly income
+            {oneTimeThisMonth > 0 && (
+              <span style={{ color: 'var(--color-gold)' }}> · +{formatCurrency(oneTimeThisMonth)} one-time</span>
+            )}
           </p>
           {/* Mini income breakdown */}
           <div className="flex justify-center gap-8 mt-5" style={{ borderTop: '1px solid rgba(201,184,138,0.3)', paddingTop: 16 }}>
@@ -192,6 +201,9 @@ export default function Dashboard({ onAddExpense, onExpenseClick, onCategoryClic
         <div className="flex gap-4 flex-wrap">
           <ActionButton primary onClick={onAddExpense}>Add Expense</ActionButton>
           <ActionButton onClick={onViewLedger}>View Budget</ActionButton>
+          <ActionButton onClick={onImport}>
+            Review Inbox{pendingCount > 0 ? ` (${pendingCount})` : ''}
+          </ActionButton>
           <ActionButton onClick={onYearToDate}>Year to Date</ActionButton>
           <ActionButton onClick={onSettings}>Settings</ActionButton>
         </div>
