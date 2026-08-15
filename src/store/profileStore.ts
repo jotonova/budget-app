@@ -4,6 +4,7 @@ import { loadLedger } from '../lib/persistence'
 import { loadCloud, saveCloud } from '../lib/cloud'
 import { startRealtime, stopRealtime } from '../lib/realtime'
 import { clearVersions } from '../lib/cloudVersions'
+import { isDesktop, isWeb } from '../lib/platform'
 import { useLedgerStore } from './ledgerStore'
 import { useAuthStore } from './authStore'
 import type { LedgerData } from '../lib/types'
@@ -100,6 +101,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   setSyncError(m) { set({ syncError: m }) },
 
   async useLocal() {
+    if (isWeb) return // no on-device local budget on the web build
     if (get().mode === 'local' && !get().householdId) { setMode({ kind: 'local' }); return }
     stopRealtime(); clearVersions(); setMode({ kind: 'local' })
     const data = await loadLedger()
@@ -121,11 +123,15 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       startRealtime(id, useAuthStore.getState().user?.id ?? '')
       set({ mode: 'cloud', householdId: id, householdName: name, switching: false })
     } catch (e) {
-      // Never pretend to be in cloud — revert to local and surface the reason,
-      // so writes don't silently go to a household we failed to open.
+      // Never pretend to be in cloud — surface the reason so writes don't
+      // silently go to a household we failed to open.
       setMode({ kind: 'local' })
-      const local = await loadLedger()
-      useLedgerStore.getState().init(local)
+      // Desktop can fall back to the on-device local budget; the web build has
+      // no local file, so never call the Tauri path there — just surface the error.
+      if (isDesktop) {
+        const local = await loadLedger()
+        useLedgerStore.getState().init(local)
+      }
       set({
         mode: 'local', householdId: null, householdName: null, switching: false,
         syncError: `Couldn't open the shared household: ${errMsg(e)}`,
@@ -134,6 +140,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   },
 
   async importLocalIntoHousehold() {
+    if (isWeb) throw new Error('There is no on-device local budget on the web app.')
     const hid = get().householdId
     if (get().mode !== 'cloud' || !hid) throw new Error('Switch into a household first.')
     set({ importing: true, syncError: null })
