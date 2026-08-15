@@ -1,5 +1,6 @@
 import { useState, type CSSProperties } from 'react'
 import { useIsMobile } from '../lib/useIsMobile'
+import { useEscape } from '../lib/useEscape'
 import { BANK_GUIDES, type BankGuide } from '../lib/import/banks'
 
 interface Props {
@@ -12,10 +13,11 @@ interface Props {
 export default function ImportWizard({ onChooseFile, onCancel }: Props) {
   const isMobile = useIsMobile()
   const [bank, setBank] = useState<BankGuide | null>(null)
+  useEscape(onCancel)
 
   return (
     <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: 200, backgroundColor: 'rgba(26,41,66,0.55)', padding: 16 }} onClick={onCancel}>
-      <div className="rounded-xl" style={{ backgroundColor: 'var(--color-parchment)', border: '1px solid var(--color-gold)', boxShadow: '0 8px 40px rgba(26,41,66,0.3)', width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', padding: isMobile ? 20 : 28 }} onClick={e => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-label="Import your statement" className="rounded-xl" style={{ backgroundColor: 'var(--color-parchment)', border: '1px solid var(--color-gold)', boxShadow: '0 8px 40px rgba(26,41,66,0.3)', width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', padding: isMobile ? 20 : 28 }} onClick={e => e.stopPropagation()}>
         <p style={{ fontFamily: 'var(--font-body)', fontSize: 12, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--color-ink-soft)', marginBottom: 4 }}>
           Import your statement
         </p>

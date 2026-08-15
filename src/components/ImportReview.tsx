@@ -542,7 +542,7 @@ function CategorySelect({ groups, categories, value, onChange, isMobile }: {
 }) {
   const standalones = categories.filter(c => c.groupId === null).sort((a, b) => a.order - b.order)
   return (
-    <select value={value} onChange={e => onChange(e.target.value)} style={selectStyle(isMobile)}>
+    <select aria-label="Category" value={value} onChange={e => onChange(e.target.value)} style={selectStyle(isMobile)}>
       <option value="" disabled>Choose category…</option>
       {groups.map(g => {
         const cats = categories.filter(c => c.groupId === g.id).sort((a, b) => a.order - b.order)
@@ -558,7 +558,7 @@ function PaymentSelect({ paymentMethods, value, onChange, isMobile }: {
   paymentMethods: PaymentMethod[]; value: string; onChange: (v: string) => void; isMobile: boolean
 }) {
   return (
-    <select value={value} onChange={e => onChange(e.target.value)} style={selectStyle(isMobile)}>
+    <select aria-label="Payment method" value={value} onChange={e => onChange(e.target.value)} style={selectStyle(isMobile)}>
       <option value="">Payment method (optional)</option>
       {paymentMethods.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
     </select>
@@ -588,7 +588,7 @@ function selectStyle(isMobile: boolean): CSSProperties {
 function Segmented({ children, active, onClick }: { children: React.ReactNode; active: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick} style={{
-      fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 600, padding: '8px 12px', borderRadius: 6, minHeight: 40,
+      fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 600, padding: '8px 12px', borderRadius: 6, minHeight: 44,
       border: `1px solid ${active ? 'var(--color-navy)' : 'var(--color-parchment-dark)'}`,
       backgroundColor: active ? 'var(--color-navy)' : 'transparent',
       color: active ? 'var(--color-parchment)' : 'var(--color-ink)', cursor: 'pointer',
@@ -602,7 +602,7 @@ function RowButton({ children, onClick, primary, disabled }: {
   return (
     <button onClick={onClick} disabled={disabled} style={{
       fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 600, letterSpacing: '0.04em',
-      padding: '8px 14px', borderRadius: 6, minHeight: 40,
+      padding: '8px 14px', borderRadius: 6, minHeight: 44,
       border: primary ? 'none' : '1px solid var(--color-navy)',
       backgroundColor: primary ? 'var(--color-navy)' : 'transparent',
       color: primary ? 'var(--color-parchment)' : 'var(--color-navy)',

@@ -1,5 +1,6 @@
 import { useState, type CSSProperties } from 'react'
 import { useIsMobile } from '../lib/useIsMobile'
+import { useEscape } from '../lib/useEscape'
 import { useLedgerStore } from '../store/ledgerStore'
 import { formatCurrency } from '../lib/utils'
 
@@ -14,6 +15,7 @@ export default function ImportManage({ onClose }: Props) {
   const deleteMerchantRule = useLedgerStore(s => s.deleteMerchantRule)
   const deleteImportProfile = useLedgerStore(s => s.deleteImportProfile)
   const [tab, setTab] = useState<Tab>('skipped')
+  useEscape(onClose)
 
   const skipped = (data?.pendingTransactions ?? []).filter(p => p.status === 'skipped').slice().sort((a, b) => (a.date < b.date ? 1 : -1))
   const rules = data?.merchantRules ?? []
@@ -28,7 +30,7 @@ export default function ImportManage({ onClose }: Props) {
 
   return (
     <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: 200, backgroundColor: 'rgba(26,41,66,0.55)', padding: 16 }} onClick={onClose}>
-      <div className="rounded-xl" style={{ backgroundColor: 'var(--color-parchment)', border: '1px solid var(--color-gold)', boxShadow: '0 8px 40px rgba(26,41,66,0.3)', width: '100%', maxWidth: 620, maxHeight: '90vh', overflowY: 'auto', padding: isMobile ? 18 : 26 }} onClick={e => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-label="Manage imports" className="rounded-xl" style={{ backgroundColor: 'var(--color-parchment)', border: '1px solid var(--color-gold)', boxShadow: '0 8px 40px rgba(26,41,66,0.3)', width: '100%', maxWidth: 620, maxHeight: '90vh', overflowY: 'auto', padding: isMobile ? 18 : 26 }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, color: 'var(--color-navy)', margin: 0 }}>Manage imports</h2>
           <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: 'var(--color-ink-soft)', minHeight: 44, minWidth: 44 }}>×</button>
@@ -109,7 +111,7 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <p style={{ fontFamily: 'var(--font-body)', fontStyle: 'italic', fontSize: 15, color: 'var(--color-ink-soft)', padding: '20px 0', textAlign: 'center' }}>{children}</p>
 }
 function MiniBtn({ children, onClick, danger }: { children: React.ReactNode; onClick: () => void; danger?: boolean }) {
-  return <button onClick={onClick} style={{ flexShrink: 0, fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 600, padding: '8px 14px', minHeight: 40, borderRadius: 6, border: `1px solid ${danger ? 'var(--color-burgundy)' : 'var(--color-navy)'}`, backgroundColor: 'transparent', color: danger ? 'var(--color-burgundy)' : 'var(--color-navy)', cursor: 'pointer' }}>{children}</button>
+  return <button onClick={onClick} style={{ flexShrink: 0, fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 600, padding: '8px 14px', minHeight: 44, borderRadius: 6, border: `1px solid ${danger ? 'var(--color-burgundy)' : 'var(--color-navy)'}`, backgroundColor: 'transparent', color: danger ? 'var(--color-burgundy)' : 'var(--color-navy)', cursor: 'pointer' }}>{children}</button>
 }
 const rowMain: CSSProperties = { fontFamily: 'var(--font-body)', fontSize: 15, color: 'var(--color-ink)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
 const rowSub: CSSProperties = { fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--color-ink-soft)', margin: '2px 0 0' }

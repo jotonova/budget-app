@@ -1,5 +1,6 @@
 import { useState, useMemo, type CSSProperties } from 'react'
 import { useIsMobile } from '../lib/useIsMobile'
+import { useEscape } from '../lib/useEscape'
 import { parseAmount, extractStatementDate, normalizeMerchant } from '../lib/import/format'
 import { headerSignature, type ImportProfile, type AmountMapping } from '../lib/import/profiles'
 import type { GuessResult } from '../lib/import/guess'
@@ -20,6 +21,7 @@ const DATE_FORMATS = ['MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD']
  *  preview. Confirm saves it as that bank's profile; Adjust opens manual mapping. */
 export default function ImportMapper({ fileName, headers, rows, guess, onConfirm, onCancel }: Props) {
   const isMobile = useIsMobile()
+  useEscape(onCancel)
   const [adjust, setAdjust] = useState(guess.confidence === 'low')
   const [bankName, setBankName] = useState('')
   const [dateCol, setDateCol] = useState(guess.dateCol ?? '')
@@ -61,7 +63,7 @@ export default function ImportMapper({ fileName, headers, rows, guess, onConfirm
 
   return (
     <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: 200, backgroundColor: 'rgba(26,41,66,0.55)', padding: 16 }} onClick={onCancel}>
-      <div className="rounded-xl" style={{ backgroundColor: 'var(--color-parchment)', border: '1px solid var(--color-gold)', boxShadow: '0 8px 40px rgba(26,41,66,0.3)', width: '100%', maxWidth: 640, maxHeight: '90vh', overflowY: 'auto', padding: isMobile ? 20 : 28 }} onClick={e => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-label="Confirm import columns" className="rounded-xl" style={{ backgroundColor: 'var(--color-parchment)', border: '1px solid var(--color-gold)', boxShadow: '0 8px 40px rgba(26,41,66,0.3)', width: '100%', maxWidth: 640, maxHeight: '90vh', overflowY: 'auto', padding: isMobile ? 20 : 28 }} onClick={e => e.stopPropagation()}>
         <p style={{ fontFamily: 'var(--font-body)', fontSize: 12, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--color-ink-soft)', marginBottom: 4 }}>
           New bank · {fileName}
         </p>
